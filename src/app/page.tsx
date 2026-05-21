@@ -1,8 +1,16 @@
+import { redirect } from "next/navigation";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 import Navbar from "@/components/Navbar";
 import UploadZone from "@/components/UploadZone";
-import { UploadCloud, Globe, Shield, Clock } from "lucide-react";
+import { UploadCloud, Globe, Shield, Clock, Zap, Lock } from "lucide-react";
 
-export default function Home() {
+export default async function Home() {
+  // Redirect logged-in users straight to their dashboard
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect("/dashboard");
   return (
     <div className="flex flex-1 flex-col">
       <Navbar />
@@ -12,7 +20,8 @@ export default function Home() {
             Share any file, instantly
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-            No account required. Images, PDFs, documents, videos and more. Upload and share with a single link.
+            No account required. Images, PDFs, documents, videos and more.
+            Upload and share with a single link.
           </p>
         </div>
 
@@ -62,7 +71,9 @@ function Feature({
         {icon}
       </div>
       <h3 className="mt-5 font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        {description}
+      </p>
     </div>
   );
 }

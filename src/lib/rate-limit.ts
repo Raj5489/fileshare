@@ -8,7 +8,7 @@ function makeLimiter(
 ) {
   if (!redis) {
     return {
-      limit: async (_identifier: string) => ({
+      limit: async () => ({
         success: true,
         limit: requests,
         remaining: requests,

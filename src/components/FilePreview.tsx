@@ -1,6 +1,12 @@
 "use client";
 
-import { FileImage, FileText, FileAudio, FileVideo, File as FileIcon } from "lucide-react";
+import {
+  FileImage,
+  FileText,
+  FileAudio,
+  FileVideo,
+  File as FileIcon,
+} from "lucide-react";
 
 interface FilePreviewProps {
   mimeType: string;
@@ -17,9 +23,11 @@ export default function FilePreview({
 }: FilePreviewProps) {
   if (mimeType.startsWith("image/") && previewUrl) {
     return (
+      /* eslint-disable-next-line @next/next/no-img-element */
       <img
         src={previewUrl}
         alt={originalName}
+        loading="lazy"
         className="max-h-[60vh] w-auto rounded-lg border object-contain"
       />
     );
@@ -59,12 +67,12 @@ export default function FilePreview({
   const Icon = mimeType.startsWith("image/")
     ? FileImage
     : mimeType === "application/pdf"
-    ? FileText
-    : mimeType.startsWith("audio/")
-    ? FileAudio
-    : mimeType.startsWith("video/")
-    ? FileVideo
-    : FileIcon;
+      ? FileText
+      : mimeType.startsWith("audio/")
+        ? FileAudio
+        : mimeType.startsWith("video/")
+          ? FileVideo
+          : FileIcon;
 
   return (
     <div className="flex flex-col items-center gap-4 rounded-lg border bg-card p-12">

@@ -3,15 +3,12 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getSignedDownloadUrl } from "@/lib/r2";
-import { downloadLimit, passwordAttemptLimit, apiLimit } from "@/lib/rate-limit";
-
-function getClientIp(req: NextRequest): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
+import {
+  downloadLimit,
+  passwordAttemptLimit,
+  apiLimit,
+} from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/utils";
 
 const downloadSchema = z.object({
   password: z.string().optional(),
@@ -20,7 +17,7 @@ const downloadSchema = z.object({
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ token: string }> },
 ) {
   try {
     const ip = getClientIp(req);
@@ -29,7 +26,7 @@ export async function POST(
     if (!apiOk) {
       return NextResponse.json(
         { error: "Too many requests." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -37,7 +34,7 @@ export async function POST(
     if (!dlOk) {
       return NextResponse.json(
         { error: "Download limit reached. Try again later." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -45,10 +42,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const parsed = downloadSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
     const { password, verify_only } = parsed.data;
@@ -57,7 +51,7 @@ export async function POST(
     const { data: file, error } = await admin
       .from("files")
       .select(
-        "id, storage_key, original_name, mime_type, file_size, password_hash, expires_at, max_downloads, download_count, is_deleted, scan_status"
+        "id, storage_key, original_name, mime_type, file_size, password_hash, expires_at, max_downloads, download_count, is_deleted, scan_status",
       )
       .eq("share_token", token)
       .single();
@@ -73,14 +67,14 @@ export async function POST(
     if (file.scan_status === "infected") {
       return NextResponse.json(
         { error: "This file has been blocked for safety reasons." },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     if (file.expires_at && new Date(file.expires_at) < new Date()) {
       return NextResponse.json(
         { error: "This link has expired." },
-        { status: 410 }
+        { status: 410 },
       );
     }
 
@@ -90,7 +84,7 @@ export async function POST(
     ) {
       return NextResponse.json(
         { error: "Download limit reached." },
-        { status: 410 }
+        { status: 410 },
       );
     }
 
@@ -99,7 +93,7 @@ export async function POST(
       if (!password) {
         return NextResponse.json(
           { error: "Password required.", requiresPassword: true },
-          { status: 403 }
+          { status: 403 },
         );
       }
 
@@ -107,7 +101,7 @@ export async function POST(
       if (!pwOk) {
         return NextResponse.json(
           { error: "Too many password attempts. Try again later." },
-          { status: 429 }
+          { status: 429 },
         );
       }
 
@@ -115,7 +109,7 @@ export async function POST(
       if (!valid) {
         return NextResponse.json(
           { error: "Incorrect password." },
-          { status: 403 }
+          { status: 403 },
         );
       }
     }
@@ -126,7 +120,11 @@ export async function POST(
     }
 
     // Generate signed download URL (15 minutes)
-    const download_url = await getSignedDownloadUrl(file.storage_key, 900);
+    const download_url = await getSignedDownloadUrl(
+      file.storage_key,
+      file.original_name,
+      900,
+    );
 
     // Increment download count atomically
     await admin
@@ -143,7 +141,7 @@ export async function POST(
     console.error("[Download] Error:", err);
     return NextResponse.json(
       { error: "Internal server error." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

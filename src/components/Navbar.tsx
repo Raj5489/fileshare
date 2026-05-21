@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase";
+import { getSupabaseBrowser } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, FileText, UploadCloud, Loader2 } from "lucide-react";
+import { User, LogOut, UploadCloud, Loader2, Download } from "lucide-react";
 
 export default function Navbar() {
   const [user, setUser] = useState<{ email?: string } | null>(null);
@@ -30,18 +30,33 @@ export default function Navbar() {
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+
+  // Receive file states
+  const [receiveCode, setReceiveCode] = useState("");
+  const [receiveError, setReceiveError] = useState("");
+  const [receiveOpen, setReceiveOpen] = useState(false);
+
   const router = useRouter();
 
+  const routerRef = useRef(router);
   useEffect(() => {
-    supabaseBrowser.auth.getUser().then(({ data }) => {
-      setUser(data.user ? { email: data.user.email } : null);
-      setLoading(false);
-    });
+    routerRef.current = router;
+  }, [router]);
 
-    const { data: listener } = supabaseBrowser.auth.onAuthStateChange(
-      (_event, session) => {
+  useEffect(() => {
+    // onAuthStateChange fires an INITIAL_SESSION event on mount, which covers
+    // the post-OAuth-redirect case.
+    const { data: listener } = getSupabaseBrowser().auth.onAuthStateChange(
+      (event, session) => {
         setUser(session?.user ? { email: session.user.email } : null);
-      }
+        setLoading(false);
+        // After Google/GitHub OAuth redirect the SIGNED_IN event fires here.
+        // Calling router.refresh() syncs the Next.js server cache so protected
+        // routes and server components see the new session immediately.
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          routerRef.current.refresh();
+        }
+      },
     );
 
     return () => {
@@ -56,13 +71,13 @@ export default function Navbar() {
 
     try {
       if (authMode === "login") {
-        const { error } = await supabaseBrowser.auth.signInWithPassword({
+        const { error } = await getSupabaseBrowser().auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
       } else {
-        const { error } = await supabaseBrowser.auth.signUp({
+        const { error } = await getSupabaseBrowser().auth.signUp({
           email,
           password,
         });
@@ -83,7 +98,7 @@ export default function Navbar() {
 
   async function handleOAuth(provider: "google" | "github") {
     setAuthLoading(true);
-    const { error } = await supabaseBrowser.auth.signInWithOAuth({
+    const { error } = await getSupabaseBrowser().auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
@@ -96,15 +111,62 @@ export default function Navbar() {
   }
 
   async function handleLogout() {
-    await supabaseBrowser.auth.signOut();
+    await getSupabaseBrowser().auth.signOut();
     router.push("/");
     router.refresh();
+  }
+
+  function handleReceiveSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setReceiveError("");
+
+    let token = receiveCode.trim();
+    if (!token) {
+      setReceiveError("Please enter a code or link.");
+      return;
+    }
+
+    if (token.includes("/")) {
+      try {
+        const urlStr = token.startsWith("http") ? token : `http://${token}`;
+        const url = new URL(urlStr);
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        const fIndex = pathParts.indexOf("f");
+        if (fIndex !== -1 && pathParts[fIndex + 1]) {
+          token = pathParts[fIndex + 1];
+        } else {
+          const lastPart = pathParts.pop();
+          if (lastPart) {
+            token = lastPart;
+          }
+        }
+      } catch {
+        const parts = token.split("/");
+        const lastPart = parts.filter(Boolean).pop();
+        if (lastPart) {
+          token = lastPart;
+        }
+      }
+    }
+
+    const tokenRegex = /^[a-z0-9]+$/;
+    if (!tokenRegex.test(token)) {
+      setReceiveError("Invalid character in share code.");
+      return;
+    }
+
+    setReceiveOpen(false);
+    setReceiveCode("");
+    router.push(`/f/${token}`);
   }
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md px-6 py-3">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 text-xl font-bold tracking-tight">
+        <Link
+          href={user ? "/dashboard" : "/"}
+          className="flex items-center gap-2.5 text-xl font-bold tracking-tight"
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <UploadCloud className="h-5 w-5" />
           </div>
@@ -112,23 +174,54 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
+            <DialogTrigger>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Download className="h-4 w-4" />
+                Receive File
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Receive File</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleReceiveSubmit} className="space-y-4">
+                {receiveError && (
+                  <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {receiveError}
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Share Code or URL
+                  </label>
+                  <Input
+                    placeholder="e.g. a1b2c3 or https://.../f/a1b2c3"
+                    value={receiveCode}
+                    onChange={(e) => setReceiveCode(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full">
+                  Go to File
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+
           {loading ? (
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : user ? (
             <>
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm">
-                  <FileText className="mr-2 h-4 w-4" />
-                  My Files
-                </Button>
-              </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger>
                   <Button variant="ghost" size="sm" className="gap-2">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
                       <User className="h-3.5 w-3.5 text-primary" />
                     </div>
-                    <span className="max-w-[120px] truncate">{user.email?.split("@")[0] || "Account"}</span>
+                    <span className="max-w-[120px] truncate">
+                      {user.email?.split("@")[0] || "Account"}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -152,7 +245,9 @@ export default function Navbar() {
                 </DialogHeader>
                 <form onSubmit={handleAuth} className="space-y-4">
                   {authError && (
-                    <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{authError}</p>
+                    <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {authError}
+                    </p>
                   )}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Email</label>
@@ -174,7 +269,11 @@ export default function Navbar() {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={authLoading}
+                  >
                     {authLoading ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : authMode === "login" ? (

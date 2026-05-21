@@ -4,20 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { getSignedDownloadUrl } from "@/lib/r2";
 import { apiLimit } from "@/lib/rate-limit";
-import { formatBytes } from "@/lib/utils";
-
-function getClientIp(req: NextRequest): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
+import { formatBytes, getClientIp, parseExpiry } from "@/lib/utils";
 
 // GET: Public file metadata
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ token: string }> },
 ) {
   try {
     const { token } = await params;
@@ -26,7 +18,7 @@ export async function GET(
     const { data: file, error } = await admin
       .from("files")
       .select(
-        "id, share_token, original_name, mime_type, file_size, download_count, max_downloads, expires_at, is_deleted, password_hash, created_at"
+        "id, share_token, original_name, mime_type, file_size, download_count, max_downloads, expires_at, is_deleted, password_hash, created_at, storage_key",
       )
       .eq("share_token", token)
       .single();
@@ -35,7 +27,13 @@ export async function GET(
       return NextResponse.json({ error: "File not found." }, { status: 404 });
     }
 
-    const is_expired = file.expires_at ? new Date(file.expires_at) < new Date() : false;
+    if (file.is_deleted) {
+      return NextResponse.json({ error: "File not found." }, { status: 404 });
+    }
+
+    const is_expired = file.expires_at
+      ? new Date(file.expires_at) < new Date()
+      : false;
     const is_download_limit_reached =
       file.max_downloads !== null && file.download_count >= file.max_downloads;
 
@@ -44,9 +42,16 @@ export async function GET(
       !is_expired &&
       !is_download_limit_reached &&
       !file.is_deleted &&
-      (file.mime_type.startsWith("image/") || file.mime_type === "application/pdf")
+      (file.mime_type.startsWith("image/") ||
+        file.mime_type === "application/pdf" ||
+        file.mime_type.startsWith("video/") ||
+        file.mime_type.startsWith("audio/"))
     ) {
-      preview_url = await getSignedDownloadUrl(file.share_token, 3600);
+      preview_url = await getSignedDownloadUrl(
+        file.storage_key,
+        file.original_name,
+        3600,
+      );
     }
 
     return NextResponse.json({
@@ -67,7 +72,7 @@ export async function GET(
     console.error("[Files/Token] GET error:", err);
     return NextResponse.json(
       { error: "Internal server error." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -79,7 +84,7 @@ const patchSchema = z.object({
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ token: string }> },
 ) {
   try {
     const ip = getClientIp(req);
@@ -87,7 +92,7 @@ export async function PATCH(
     if (!apiOk) {
       return NextResponse.json(
         { error: "Too many requests." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -104,37 +109,11 @@ export async function PATCH(
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
     const { expires_in } = parsed.data;
-    const now = new Date();
-    let expires_at: Date | null = null;
-
-    switch (expires_in) {
-      case "1h":
-        now.setHours(now.getHours() + 1);
-        expires_at = now;
-        break;
-      case "24h":
-        now.setHours(now.getHours() + 24);
-        expires_at = now;
-        break;
-      case "7d":
-        now.setDate(now.getDate() + 7);
-        expires_at = now;
-        break;
-      case "30d":
-        now.setDate(now.getDate() + 30);
-        expires_at = now;
-        break;
-      case "never":
-        expires_at = null;
-        break;
-    }
+    const expires_at = parseExpiry(expires_in);
 
     const { error } = await getSupabaseAdmin()
       .from("files")
@@ -150,7 +129,7 @@ export async function PATCH(
       console.error("[Files/Token] PATCH error:", error);
       return NextResponse.json(
         { error: "Failed to update file." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -159,7 +138,7 @@ export async function PATCH(
     console.error("[Files/Token] PATCH error:", err);
     return NextResponse.json(
       { error: "Internal server error." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -167,7 +146,7 @@ export async function PATCH(
 // DELETE: Delete file (authenticated owner only)
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ token: string }> },
 ) {
   try {
     const ip = getClientIp(req);
@@ -175,7 +154,7 @@ export async function DELETE(
     if (!apiOk) {
       return NextResponse.json(
         { error: "Too many requests." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -202,7 +181,7 @@ export async function DELETE(
     if (fetchError || !file) {
       return NextResponse.json(
         { error: "File not found or access denied." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -223,7 +202,7 @@ export async function DELETE(
       console.error("[Files/Delete] DB update error:", updateError);
       return NextResponse.json(
         { error: "Failed to delete file." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -232,7 +211,7 @@ export async function DELETE(
     console.error("[Files/Token] DELETE error:", err);
     return NextResponse.json(
       { error: "Internal server error." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

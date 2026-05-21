@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -29,13 +29,18 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
 
-  // Protect dashboard routes
-  if (request.nextUrl.pathname.startsWith("/dashboard") && !user) {
-    return NextResponse.redirect(new URL("/", request.url));
+  // Only call getUser() if we are trying to access dashboard routes to protect them.
+  // This avoids slow database auth checks on public API requests (like file downloads) and share pages.
+  if (pathname.startsWith("/dashboard")) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return supabaseResponse;

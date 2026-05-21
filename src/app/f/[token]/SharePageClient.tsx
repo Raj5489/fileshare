@@ -2,11 +2,23 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Download, Loader2 } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Eye,
+  Calendar,
+  Shield,
+  FileIcon,
+  Image,
+  FileText,
+  Film,
+  Music,
+  Archive,
+} from "lucide-react";
 import FilePreview from "@/components/FilePreview";
 import PasswordGate from "@/components/PasswordGate";
+import { formatDate, formatBytes } from "@/lib/utils";
 
 interface Metadata {
   token: string;
@@ -21,11 +33,43 @@ interface Metadata {
   created_at: string;
 }
 
-interface SharePageClientProps {
-  metadata: Metadata;
+function getFileIcon(mimeType: string) {
+  if (mimeType.startsWith("image/")) return Image;
+  if (mimeType === "application/pdf") return FileText;
+  if (mimeType.startsWith("video/")) return Film;
+  if (mimeType.startsWith("audio/")) return Music;
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("tar") ||
+    mimeType.includes("7z")
+  )
+    return Archive;
+  return FileIcon;
 }
 
-export default function SharePageClient({ metadata }: SharePageClientProps) {
+function getFileCategory(mimeType: string): string {
+  if (mimeType.startsWith("image/")) return "Image";
+  if (mimeType === "application/pdf") return "PDF Document";
+  if (mimeType.startsWith("video/")) return "Video";
+  if (mimeType.startsWith("audio/")) return "Audio";
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("tar") ||
+    mimeType.includes("7z") ||
+    mimeType.includes("rar")
+  )
+    return "Archive";
+  if (mimeType.startsWith("text/")) return "Text File";
+  if (mimeType.includes("word") || mimeType.includes("document"))
+    return "Document";
+  if (mimeType.includes("sheet") || mimeType.includes("excel"))
+    return "Spreadsheet";
+  if (mimeType.includes("presentation") || mimeType.includes("powerpoint"))
+    return "Presentation";
+  return "File";
+}
+
+export default function SharePageClient({ metadata }: { metadata: Metadata }) {
   const [unlocked, setUnlocked] = useState(!metadata.has_password);
   const [password, setPassword] = useState("");
   const [pwError, setPwError] = useState("");
@@ -45,9 +89,7 @@ export default function SharePageClient({ metadata }: SharePageClientProps) {
       if (res.ok) {
         setPassword(pw);
         setUnlocked(true);
-      } else {
-        setPwError(data.error || "Incorrect password.");
-      }
+      } else setPwError(data.error || "Incorrect password.");
     } catch {
       setPwError("Something went wrong.");
     } finally {
@@ -61,7 +103,9 @@ export default function SharePageClient({ metadata }: SharePageClientProps) {
       const res = await fetch(`/api/download/${metadata.token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: unlocked && password ? password : undefined }),
+        body: JSON.stringify({
+          password: unlocked && password ? password : undefined,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.download_url) {
@@ -89,33 +133,79 @@ export default function SharePageClient({ metadata }: SharePageClientProps) {
     );
   }
 
-  return (
-    <div className="w-full max-w-3xl space-y-6">
-      <Card className="rounded-2xl shadow-sm">
-        <CardContent className="p-8">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <h2 className="truncate text-xl font-semibold">
-                  {metadata.original_name}
-                </h2>
-                <p className="mt-1.5 text-sm text-muted-foreground">
-                  {metadata.file_size_formatted} · {metadata.download_count} downloads
-                  {metadata.expires_at && (
-                    <> · Expires {new Date(metadata.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</>
-                  )}
-                </p>
-              </div>
-              <Button onClick={handleDownload} disabled={downloading} className="shrink-0">
-                {downloading ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="mr-1.5 h-4 w-4" />
-                )}
-                Download
-              </Button>
-            </div>
+  const Icon = getFileIcon(metadata.mime_type);
+  const category = getFileCategory(metadata.mime_type);
+  const hasPreview = !!metadata.preview_url;
 
+  return (
+    <div className="w-full max-w-2xl space-y-4">
+      {/* Main card */}
+      <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+        {/* File hero */}
+        <div className="flex items-center gap-4 px-6 py-5 border-b">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1
+              className="truncate text-lg font-semibold leading-tight"
+              title={metadata.original_name}
+            >
+              {metadata.original_name}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{category}</p>
+          </div>
+          <Button
+            onClick={handleDownload}
+            disabled={downloading}
+            size="sm"
+            className="shrink-0 gap-2"
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {downloading ? "Starting…" : "Download"}
+          </Button>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 divide-x border-b bg-muted/20">
+          <div className="flex flex-col items-center gap-0.5 px-4 py-3">
+            <span className="text-xs text-muted-foreground">Size</span>
+            <span className="text-sm font-semibold">
+              {metadata.file_size_formatted}
+            </span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5 px-4 py-3">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Eye className="h-3 w-3" />
+              Downloads
+            </span>
+            <span className="text-sm font-semibold">
+              {metadata.download_count}
+            </span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5 px-4 py-3">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              Expires
+            </span>
+            <span className="text-sm font-semibold">
+              {metadata.expires_at
+                ? new Date(metadata.expires_at).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "Never"}
+            </span>
+          </div>
+        </div>
+
+        {/* Preview */}
+        {hasPreview && (
+          <div className="p-4 border-b">
             <FilePreview
               mimeType={metadata.mime_type}
               previewUrl={metadata.preview_url}
@@ -123,8 +213,51 @@ export default function SharePageClient({ metadata }: SharePageClientProps) {
               fileSize={metadata.file_size_formatted}
             />
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* No preview — show a nicer placeholder with download CTA */}
+        {!hasPreview && (
+          <div className="flex flex-col items-center gap-4 px-6 py-12">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Icon className="h-10 w-10" />
+            </div>
+            <div className="text-center">
+              <p className="font-medium">{metadata.original_name}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {metadata.file_size_formatted} · {category}
+              </p>
+            </div>
+            <Button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="gap-2 mt-2"
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {downloading ? "Starting…" : "Download File"}
+            </Button>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-3 bg-muted/20 text-xs text-muted-foreground">
+          <span>Shared {formatDate(metadata.created_at)}</span>
+          {metadata.has_password && (
+            <span className="flex items-center gap-1">
+              <Shield className="h-3 w-3" />
+              Password protected
+            </span>
+          )}
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Shared via{" "}
+        <span className="font-medium text-foreground">FileShare</span>
+      </p>
     </div>
   );
 }

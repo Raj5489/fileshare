@@ -7,10 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Generate short share tokens (e.g. "abc123")
-const nanoid = customAlphabet(
-  "0123456789abcdefghijklmnopqrstuvwxyz",
-  8
-);
+const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
 export function generateShareToken() {
   return nanoid();
 }
@@ -47,9 +44,12 @@ const ALLOWED_TYPES: Record<string, number> = {
   // Documents
   "application/pdf": MAX_FILE_SIZE,
   "application/msword": MAX_FILE_SIZE,
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": MAX_FILE_SIZE,
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": MAX_FILE_SIZE,
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": MAX_FILE_SIZE,
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    MAX_FILE_SIZE,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+    MAX_FILE_SIZE,
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    MAX_FILE_SIZE,
   "application/vnd.ms-excel": MAX_FILE_SIZE,
   "application/vnd.ms-powerpoint": MAX_FILE_SIZE,
   // Text
@@ -92,12 +92,12 @@ const ALLOWED_TYPES: Record<string, number> = {
   "application/x-msdownload": MAX_FILE_SIZE,
   "application/x-executable": MAX_FILE_SIZE,
   "application/vnd.android.package-archive": MAX_FILE_SIZE, // APK
-  "application/x-apple-diskimage": MAX_FILE_SIZE,           // DMG
-  "application/x-ms-dos-executable": MAX_FILE_SIZE,         // EXE
-  "application/x-deb": MAX_FILE_SIZE,                       // DEB
-  "application/x-rpm": MAX_FILE_SIZE,                       // RPM
-  "application/java-archive": MAX_FILE_SIZE,                // JAR
-  "application/x-iso9660-image": MAX_FILE_SIZE,             // ISO
+  "application/x-apple-diskimage": MAX_FILE_SIZE, // DMG
+  "application/x-ms-dos-executable": MAX_FILE_SIZE, // EXE
+  "application/x-deb": MAX_FILE_SIZE, // DEB
+  "application/x-rpm": MAX_FILE_SIZE, // RPM
+  "application/java-archive": MAX_FILE_SIZE, // JAR
+  "application/x-iso9660-image": MAX_FILE_SIZE, // ISO
   "application/x-xz": MAX_FILE_SIZE,
   // Fonts
   "font/ttf": MAX_FILE_SIZE,
@@ -117,16 +117,15 @@ const ALLOWED_TYPES: Record<string, number> = {
 
 export function validateFileType(
   mimeType: string,
-  fileName: string,
-  fileSize: number
+  _fileName: string,
+  fileSize: number,
 ): { valid: boolean; error?: string } {
-  // No blocked extensions — allow everything
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  void ext; // unused now but kept for future use
+  // Reject unknown MIME types
+  if (!(mimeType in ALLOWED_TYPES)) {
+    return { valid: false, error: "File type not supported." };
+  }
 
-  // If MIME type is known, enforce 10 GB limit
-  const maxSize = ALLOWED_TYPES[mimeType] ?? MAX_FILE_SIZE;
-
+  const maxSize = ALLOWED_TYPES[mimeType];
   if (fileSize > maxSize) {
     return {
       valid: false,
@@ -182,46 +181,13 @@ export function parseExpiry(option: string): Date | null {
   return now;
 }
 
-// Detect MIME type from file buffer (simple magic bytes)
-export function detectMimeType(buffer: Buffer): string | null {
-  if (buffer.length < 4) return null;
-
-  const signatures: [number[], string][] = [
-    [[0x89, 0x50, 0x4e, 0x47], "image/png"],
-    [[0xff, 0xd8, 0xff], "image/jpeg"],
-    [[0x47, 0x49, 0x46], "image/gif"],
-    [[0x52, 0x49, 0x46, 0x46], "image/webp"], // Actually WEBP starts with RIFF...WEBP
-    [[0x25, 0x50, 0x44, 0x46], "application/pdf"],
-    [[0x50, 0x4b, 0x03, 0x04], "application/zip"],
-    [[0x1f, 0x8b], "application/gzip"],
-    [[0x42, 0x5a, 0x68], "application/x-bzip2"],
-    [[0x37, 0x7a, 0xbc, 0xaf], "application/x-7z-compressed"],
-    [[0x75, 0x73, 0x74, 0x61, 0x72], "application/x-tar"],
-  ];
-
-  for (const [sig, mime] of signatures) {
-    if (buffer.slice(0, sig.length).toString("hex") === Buffer.from(sig).toString("hex")) {
-      return mime;
-    }
-  }
-
-  // Check for WEBP more specifically (RIFF....WEBP)
-  if (
-    buffer.slice(0, 4).toString("hex") === "52494646" &&
-    buffer.slice(8, 12).toString() === "WEBP"
-  ) {
-    return "image/webp";
-  }
-
-  // Check for SVG
-  const start = buffer.slice(0, 256).toString("utf-8").trim().toLowerCase();
-  if (start.startsWith("<?xml") || start.startsWith("<svg")) {
-    return "image/svg+xml";
-  }
-
-  // Check for plain text
-  const isText = buffer.slice(0, 512).every((b) => b === 0x09 || b === 0x0a || b === 0x0d || (b >= 0x20 && b <= 0x7e));
-  if (isText) return "text/plain";
-
-  return null;
+// Extract client IP from request headers
+export function getClientIp(req: {
+  headers: { get(name: string): string | null };
+}): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
 }

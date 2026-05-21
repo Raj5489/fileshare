@@ -7,6 +7,8 @@ export async function GET(req: NextRequest) {
   const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
+    const redirectResponse = NextResponse.redirect(`${origin}${next}`);
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -17,7 +19,7 @@ export async function GET(req: NextRequest) {
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) => {
-              req.cookies.set(name, value);
+              redirectResponse.cookies.set(name, value, options);
             });
           },
         },
@@ -25,8 +27,9 @@ export async function GET(req: NextRequest) {
     );
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
+
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      return redirectResponse;
     }
   }
 

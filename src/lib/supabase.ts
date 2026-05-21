@@ -1,29 +1,26 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Browser/client-side client — lazy-initialized to avoid crash during module eval
+// Browser/client-side client — uses @supabase/ssr so the PKCE code_verifier
+// is stored in cookies (not localStorage), allowing the server-side
+// /auth/callback route to complete exchangeCodeForSession successfully.
 let _supabaseBrowser: SupabaseClient | null = null;
 export function getSupabaseBrowser() {
   if (!_supabaseBrowser) {
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error(
-        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local"
+        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local",
       );
     }
-    _supabaseBrowser = createClient(supabaseUrl, supabaseAnonKey);
+    _supabaseBrowser = createBrowserClient(supabaseUrl, supabaseAnonKey);
   }
   return _supabaseBrowser;
 }
-
-/** @deprecated Use getSupabaseBrowser() instead */
-export const supabaseBrowser = new Proxy({} as SupabaseClient, {
-  get(_, prop) {
-    return (getSupabaseBrowser() as any)[prop];
-  },
-});
 
 // Admin client — bypasses RLS, server-only
 let _supabaseAdmin: SupabaseClient | null = null;
@@ -38,10 +35,3 @@ export function getSupabaseAdmin() {
   }
   return _supabaseAdmin;
 }
-
-/** @deprecated Use getSupabaseAdmin() instead */
-export const supabaseAdmin = new Proxy({} as SupabaseClient, {
-  get(_, prop) {
-    return (getSupabaseAdmin() as any)[prop];
-  },
-});

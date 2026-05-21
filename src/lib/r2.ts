@@ -41,14 +41,30 @@ export async function getPresignedUploadUrl(
   );
 }
 
-export async function getSignedDownloadUrl(key: string, expiresIn = 900) {
+export async function getSignedDownloadUrl(
+  key: string,
+  filenameOrExpiresIn?: string | number,
+  expiresIn = 900
+) {
+  let filename: string | undefined;
+  let actualExpiresIn = expiresIn;
+
+  if (typeof filenameOrExpiresIn === "number") {
+    actualExpiresIn = filenameOrExpiresIn;
+  } else if (typeof filenameOrExpiresIn === "string") {
+    filename = filenameOrExpiresIn;
+  }
+
   return getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME!,
       Key: key,
+      ResponseContentDisposition: filename
+        ? `attachment; filename="${filename.replace(/[^ \x20-\x7e]/g, "_").replace(/"/g, '\\"')}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+        : undefined,
     }),
-    { expiresIn }
+    { expiresIn: actualExpiresIn }
   );
 }
 
