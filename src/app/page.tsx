@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import Navbar from "@/components/Navbar";
 import UploadZone from "@/components/UploadZone";
+import Footer from "@/components/Footer";
 import { UploadCloud, Globe, Shield, Clock, Zap, Lock } from "lucide-react";
 
 export default async function Home() {
@@ -52,6 +53,7 @@ export default async function Home() {
           />
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

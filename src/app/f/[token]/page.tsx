@@ -1,5 +1,6 @@
 import Navbar from "@/components/Navbar";
 import SharePageClient from "./SharePageClient";
+import Footer from "@/components/Footer";
 import { FileX, Clock, ShieldOff } from "lucide-react";
 import Link from "next/link";
 
@@ -93,6 +94,7 @@ export default async function SharePage({
       <main className="flex flex-1 flex-col items-center px-6 py-16">
         <SharePageClient metadata={metadata} />
       </main>
+      <Footer />
     </div>
   );
 }

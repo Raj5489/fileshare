@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import Navbar from "@/components/Navbar";
 import DashboardClient from "@/components/DashboardClient";
+import Footer from "@/components/Footer";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -16,6 +17,7 @@ export default async function DashboardPage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <DashboardClient />
       </main>
+      <Footer />
     </div>
   );
 }
