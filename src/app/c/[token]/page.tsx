@@ -24,7 +24,8 @@ interface CollectionData {
 async function getCollectionData(
   token: string,
 ): Promise<CollectionData | null> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // Use NEXT_PUBLIC_APP_URL in production, fall back to relative path
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
   const res = await fetch(`${baseUrl}/api/collections/share/${token}`, {
     cache: "no-store",
   });

@@ -6,10 +6,10 @@ import Link from "next/link";
 
 async function getFileMetadata(token: string) {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/files/${token}`,
-      { next: { revalidate: 0 } },
-    );
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
+    const res = await fetch(`${baseUrl}/api/files/${token}`, {
+      next: { revalidate: 0 },
+    });
     if (!res.ok) return null;
     return res.json();
   } catch {
