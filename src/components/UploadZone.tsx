@@ -120,6 +120,9 @@ export default function UploadZone({
   defaultCollectionId,
 }: UploadZoneProps = {}) {
   const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
+  const [completedResults, setCompletedResults] = useState<
+    Array<{ name: string; shareUrl: string; token: string }>
+  >([]);
   const [uploading, setUploading] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -236,7 +239,9 @@ export default function UploadZone({
     setFileStates((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function uploadSingle(index: number): Promise<void> {
+  async function uploadSingle(
+    index: number,
+  ): Promise<{ name: string; shareUrl: string; token: string } | void> {
     const state = fileStates[index];
     if (!state || state.status === "done") return;
     const file = state.file;
@@ -316,6 +321,7 @@ export default function UploadZone({
         result: { token, shareUrl, name: file.name },
       });
       onUploadSuccess?.(token, shareUrl);
+      return { name: file.name, shareUrl, token };
     } catch (err) {
       updateState({
         status: "error",
@@ -338,6 +344,8 @@ export default function UploadZone({
     const CONCURRENCY = 3;
     let successCount = 0;
     let errorCount = 0;
+    const newResults: Array<{ name: string; shareUrl: string; token: string }> =
+      [];
 
     for (let i = 0; i < pendingIndices.length; i += CONCURRENCY) {
       const batch = pendingIndices.slice(i, i + CONCURRENCY);
@@ -345,7 +353,12 @@ export default function UploadZone({
         batch.map((idx) => uploadSingle(idx)),
       );
       for (const r of results) {
-        r.status === "fulfilled" ? successCount++ : errorCount++;
+        if (r.status === "fulfilled" && r.value) {
+          successCount++;
+          newResults.push(r.value);
+        } else {
+          errorCount++;
+        }
       }
     }
 
@@ -356,12 +369,14 @@ export default function UploadZone({
     if (errorCount > 0)
       toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
 
+    setCompletedResults(newResults);
     setUploading(false);
     onUploadingChange?.(false);
   }
 
   function handleReset() {
     setFileStates([]);
+    setCompletedResults([]);
     setPassword("");
     setMaxDownloads("");
     setExpiresIn("24h");
@@ -505,7 +520,7 @@ export default function UploadZone({
         </div>
       )}
 
-      {/* Single file/folder done — show share card */}
+      {/* Single file done — show share card */}
       {singleResult && (
         <ShareCard
           shareUrl={singleResult.shareUrl}
@@ -513,26 +528,21 @@ export default function UploadZone({
         />
       )}
 
-      {/* Multi done summary */}
-      {allDone && fileStates.length > 1 && (
+      {/* Multi-file done — use completedResults (avoids stale state) */}
+      {completedResults.length > 1 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            All {fileStates.length} items uploaded — share links below:
+            All {completedResults.length} items uploaded — share links below:
           </div>
-          {fileStates.map((state, i) =>
-            state.result ? (
-              <div key={i}>
-                <p className="text-xs text-muted-foreground px-1 mb-1 truncate">
-                  {state.file.name}
-                </p>
-                <ShareCard
-                  shareUrl={state.result.shareUrl}
-                  token={state.result.token}
-                />
-              </div>
-            ) : null,
-          )}
+          {completedResults.map((r, i) => (
+            <div key={i}>
+              <p className="text-xs text-muted-foreground px-1 mb-1 truncate">
+                {r.name}
+              </p>
+              <ShareCard shareUrl={r.shareUrl} token={r.token} />
+            </div>
+          ))}
         </div>
       )}
 

@@ -526,6 +526,29 @@ export default function FileList({
 
       {/* ── Mobile cards (below md) ── */}
       <div className="md:hidden space-y-2">
+        {/* Mobile select-all bar */}
+        {files.length > 0 && (
+          <div className="flex items-center gap-2 px-1">
+            <button
+              onClick={toggleAll}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              {isAllSelected ? (
+                <CheckSquare className="h-4 w-4 text-primary" />
+              ) : isSomeSelected ? (
+                <Minus className="h-4 w-4 text-primary" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+              <span>{isAllSelected ? "Deselect all" : "Select all"}</span>
+            </button>
+            {selected.size > 0 && (
+              <span className="ml-auto text-xs text-primary font-medium">
+                {selected.size} selected
+              </span>
+            )}
+          </div>
+        )}
         {isLoading && files.length === 0 ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
