@@ -366,8 +366,8 @@ export default function FileList({
         </div>
       )}
 
-      {/* Desktop table */}
-      <div className="hidden sm:block rounded-lg border overflow-x-auto">
+      {/* ── Desktop table (md and above) ── */}
+      <div className="hidden md:block rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -524,8 +524,8 @@ export default function FileList({
         </Table>
       </div>
 
-      {/* Mobile cards */}
-      <div className="sm:hidden space-y-2">
+      {/* ── Mobile cards (below md) ── */}
+      <div className="md:hidden space-y-2">
         {isLoading && files.length === 0 ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -544,13 +544,13 @@ export default function FileList({
             return (
               <div
                 key={file.id}
-                className={`rounded-xl border bg-card p-4 space-y-3 ${isSelected ? "border-primary/40 bg-primary/5" : ""}`}
+                className={`rounded-xl border bg-card p-3 ${isSelected ? "border-primary/40 bg-primary/5" : ""}`}
               >
-                {/* Top row: checkbox + name + actions */}
-                <div className="flex items-start gap-3">
+                {/* Row 1: checkbox + icon + filename */}
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleOne(file.share_token)}
-                    className="mt-0.5 shrink-0 text-muted-foreground"
+                    className="shrink-0 text-muted-foreground"
                   >
                     {isSelected ? (
                       <CheckSquare className="h-4 w-4 text-primary" />
@@ -558,20 +558,17 @@ export default function FileList({
                       <Square className="h-4 w-4" />
                     )}
                   </button>
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <Link
-                      href={`/f/${file.share_token}`}
-                      className="text-sm font-medium hover:underline truncate"
-                    >
-                      {file.original_name}
-                    </Link>
-                  </div>
+                  <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Link
+                    href={`/f/${file.share_token}`}
+                    className="text-sm font-medium hover:underline truncate flex-1"
+                  >
+                    {file.original_name}
+                  </Link>
                 </div>
-                {/* Meta */}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground pl-7">
+                {/* Row 2: meta info */}
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground pl-10">
                   <span>{formatBytes(file.file_size)}</span>
-                  <span>{formatDate(file.created_at)}</span>
                   <span className={isExpired ? "text-destructive" : ""}>
                     {file.expires_at
                       ? formatDate(file.expires_at)
@@ -579,29 +576,27 @@ export default function FileList({
                   </span>
                   <span>
                     {file.download_count}
-                    {file.max_downloads !== null &&
-                      ` / ${file.max_downloads}`}{" "}
-                    downloads
+                    {file.max_downloads !== null && `/${file.max_downloads}`} dl
                   </span>
                 </div>
-                {/* Action buttons */}
-                <div className="flex items-center gap-1 pl-5">
+                {/* Row 3: action buttons — always visible, no scroll */}
+                <div className="mt-2 flex items-center gap-1 pl-8">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => handleCopyLink(file.share_token)}
-                    className="h-8 px-2 text-xs gap-1"
+                    className="h-7 px-2 text-xs gap-1 flex-1"
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="h-3 w-3" />
                     Copy
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => openExpiryDialog(file.share_token)}
-                    className="h-8 px-2 text-xs gap-1"
+                    className="h-7 px-2 text-xs gap-1 flex-1"
                   >
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="h-3 w-3" />
                     Expiry
                   </Button>
                   {collections.length > 0 && (
@@ -609,9 +604,9 @@ export default function FileList({
                       variant="ghost"
                       size="sm"
                       onClick={() => openMoveDialog([file.share_token])}
-                      className="h-8 px-2 text-xs gap-1"
+                      className="h-7 px-2 text-xs gap-1 flex-1"
                     >
-                      <FolderInput className="h-3.5 w-3.5" />
+                      <FolderInput className="h-3 w-3" />
                       Move
                     </Button>
                   )}
@@ -620,12 +615,12 @@ export default function FileList({
                     size="sm"
                     onClick={() => handleDelete(file.share_token, file.id)}
                     disabled={deletingId === file.id}
-                    className="h-8 px-2 text-xs gap-1 text-destructive hover:text-destructive ml-auto"
+                    className="h-7 px-2 text-xs gap-1 flex-1 text-destructive hover:text-destructive"
                   >
                     {deletingId === file.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3" />
                     )}
                     Delete
                   </Button>

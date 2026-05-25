@@ -505,7 +505,7 @@ export default function UploadZone({
         </div>
       )}
 
-      {/* Single file done — show share card */}
+      {/* Single file/folder done — show share card */}
       {singleResult && (
         <ShareCard
           shareUrl={singleResult.shareUrl}
@@ -513,26 +513,11 @@ export default function UploadZone({
         />
       )}
 
-      {/* Multi-file done — show share card for each */}
+      {/* Multi done summary */}
       {allDone && fileStates.length > 1 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            All {fileStates.length} items uploaded successfully.
-          </div>
-          {fileStates.map((state, i) =>
-            state.result ? (
-              <div key={i} className="space-y-1">
-                <p className="text-xs text-muted-foreground px-1 truncate">
-                  {state.file.name}
-                </p>
-                <ShareCard
-                  shareUrl={state.result.shareUrl}
-                  token={state.result.token}
-                />
-              </div>
-            ) : null,
-          )}
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          All {fileStates.length} items uploaded successfully.
         </div>
       )}
 
