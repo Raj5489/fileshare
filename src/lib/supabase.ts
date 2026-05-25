@@ -2,36 +2,36 @@ import { createBrowserClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Browser/client-side client — uses @supabase/ssr so the PKCE code_verifier
-// is stored in cookies (not localStorage), allowing the server-side
-// /auth/callback route to complete exchangeCodeForSession successfully.
+// Browser/client-side client
 let _supabaseBrowser: SupabaseClient | null = null;
 export function getSupabaseBrowser() {
   if (!_supabaseBrowser) {
-    if (!supabaseUrl || !supabaseAnonKey) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    if (!url || !anonKey) {
       throw new Error(
-        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local",
+        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
       );
     }
-    _supabaseBrowser = createBrowserClient(supabaseUrl, supabaseAnonKey);
+    _supabaseBrowser = createBrowserClient(url, anonKey);
   }
   return _supabaseBrowser;
 }
 
 // Admin client — bypasses RLS, server-only
-let _supabaseAdmin: SupabaseClient | null = null;
+// Always create fresh to avoid stale env var issues on Vercel serverless
 export function getSupabaseAdmin() {
-  if (!_supabaseAdmin) {
-    _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!url || !serviceKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    );
   }
-  return _supabaseAdmin;
+  return createClient(url, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
