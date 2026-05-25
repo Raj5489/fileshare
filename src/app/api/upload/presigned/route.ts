@@ -109,14 +109,22 @@ export async function POST(req: NextRequest) {
 
     if (dbError) {
       console.error(
-        "[Upload] DB insert error:",
+        "[Upload/Presigned] DB insert error:",
         JSON.stringify(dbError, null, 2),
+        "token:",
+        share_token,
+        "url:",
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        "key_length:",
+        process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
       );
       return NextResponse.json(
         { error: `Failed to create file record: ${dbError.message}` },
         { status: 500 },
       );
     }
+
+    console.log("[Upload/Presigned] Insert success, token:", share_token);
 
     // Generate presigned PUT URL for direct R2 upload
     const presignedUrl = await getPresignedUploadUrl(
