@@ -3,15 +3,63 @@ import SharePageClient from "./SharePageClient";
 import Footer from "@/components/Footer";
 import { FileX, Clock, ShieldOff } from "lucide-react";
 import Link from "next/link";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { getSignedDownloadUrl } from "@/lib/r2";
+import { formatBytes } from "@/lib/utils";
 
 async function getFileMetadata(token: string) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
-    const res = await fetch(`${baseUrl}/api/files/${token}`, {
-      next: { revalidate: 0 },
-    });
-    if (!res.ok) return null;
-    return res.json();
+    const admin = getSupabaseAdmin();
+    const { data: file, error } = await admin
+      .from("files")
+      .select(
+        "id, share_token, original_name, mime_type, file_size, download_count, max_downloads, expires_at, is_deleted, password_hash, created_at, storage_key",
+      )
+      .eq("share_token", token)
+      .single();
+
+    if (error || !file || file.is_deleted) return null;
+
+    const is_expired = file.expires_at
+      ? new Date(file.expires_at) < new Date()
+      : false;
+    const is_download_limit_reached =
+      file.max_downloads !== null && file.download_count >= file.max_downloads;
+
+    let preview_url: string | null = null;
+    if (
+      !is_expired &&
+      !is_download_limit_reached &&
+      (file.mime_type.startsWith("image/") ||
+        file.mime_type === "application/pdf" ||
+        file.mime_type.startsWith("video/") ||
+        file.mime_type.startsWith("audio/"))
+    ) {
+      try {
+        preview_url = await getSignedDownloadUrl(
+          file.storage_key,
+          file.original_name,
+          3600,
+        );
+      } catch {
+        /* preview optional */
+      }
+    }
+
+    return {
+      token: file.share_token,
+      original_name: file.original_name,
+      mime_type: file.mime_type,
+      file_size: file.file_size,
+      file_size_formatted: formatBytes(file.file_size),
+      download_count: file.download_count,
+      expires_at: file.expires_at,
+      has_password: !!file.password_hash,
+      is_expired,
+      is_download_limit_reached,
+      preview_url,
+      created_at: file.created_at,
+    };
   } catch {
     return null;
   }
@@ -46,6 +94,7 @@ function ErrorPage({
           </Link>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
@@ -58,7 +107,7 @@ export default async function SharePage({
   const { token } = await params;
   const metadata = await getFileMetadata(token);
 
-  if (!metadata || metadata.error) {
+  if (!metadata) {
     return (
       <ErrorPage
         icon={FileX}
