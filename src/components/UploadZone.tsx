@@ -123,6 +123,12 @@ export default function UploadZone({
   const [completedResults, setCompletedResults] = useState<
     Array<{ name: string; shareUrl: string; token: string }>
   >([]);
+  const [collectionResult, setCollectionResult] = useState<{
+    name: string;
+    shareUrl: string;
+    token: string;
+    fileCount: number;
+  } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -370,6 +376,43 @@ export default function UploadZone({
       toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
 
     setCompletedResults(newResults);
+
+    // If multiple files uploaded successfully, auto-create a collection
+    // and show a single shared link for all of them
+    if (newResults.length > 1) {
+      try {
+        // Create a collection named after the upload batch
+        const colName = `${newResults.length} files – ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+        const colRes = await fetch("/api/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: colName }),
+        });
+        if (colRes.ok) {
+          const { collection } = await colRes.json();
+          // Add all uploaded files to the collection
+          await Promise.allSettled(
+            newResults.map((r) =>
+              fetch(`/api/collections/${collection.id}/files`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token: r.token, action: "add" }),
+              }),
+            ),
+          );
+          const appUrl =
+            process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+          setCollectionResult({
+            name: colName,
+            shareUrl: `${appUrl}/c/${collection.share_token}`,
+            token: collection.share_token,
+            fileCount: newResults.length,
+          });
+        }
+      } catch {
+        // Collection creation failed — fall back to individual links
+      }
+    }
     setUploading(false);
     onUploadingChange?.(false);
   }
@@ -377,6 +420,7 @@ export default function UploadZone({
   function handleReset() {
     setFileStates([]);
     setCompletedResults([]);
+    setCollectionResult(null);
     setPassword("");
     setMaxDownloads("");
     setExpiresIn("24h");
@@ -528,8 +572,22 @@ export default function UploadZone({
         />
       )}
 
-      {/* Multi-file done — use completedResults (avoids stale state) */}
-      {completedResults.length > 1 && (
+      {/* Multi-file done — single collection QR */}
+      {collectionResult && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            {collectionResult.fileCount} files uploaded — one link for all:
+          </div>
+          <ShareCard
+            shareUrl={collectionResult.shareUrl}
+            token={collectionResult.token}
+          />
+        </div>
+      )}
+
+      {/* Fallback: multi done but no collection (guest user) */}
+      {completedResults.length > 1 && !collectionResult && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
