@@ -249,121 +249,158 @@ export default function DashboardClient() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <StatCard
           icon={<FileText className="h-4 w-4" />}
-          label="Total Files"
+          label="Files"
           value={String(stats.file_count)}
           color="blue"
         />
         <StatCard
           icon={<HardDrive className="h-4 w-4" />}
-          label="Storage Used"
+          label="Storage"
           value={formatBytes(stats.storage_used)}
           color="violet"
         />
         <StatCard
           icon={<Download className="h-4 w-4" />}
-          label="Total Downloads"
+          label="Downloads"
           value={String(stats.total_downloads)}
           color="green"
         />
       </div>
 
-      <div className="flex gap-6">
-        {/* Collections sidebar */}
-        <aside className="w-52 shrink-0 space-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Folders
-            </p>
+      {/* Mobile: folders as horizontal strip. Desktop: sidebar + content */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        {/* Collections — horizontal on mobile, vertical sidebar on desktop */}
+        <aside className="lg:w-52 lg:shrink-0">
+          {/* Mobile folder strip */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
+            <button
+              onClick={() => setActiveCollection(null)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                activeCollection === null
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "bg-muted text-foreground"
+              }`}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              All
+            </button>
+            {collections.map((col) => (
+              <button
+                key={col.id}
+                onClick={() => setActiveCollection(col.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                  activeCollection === col.id
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "bg-muted text-foreground"
+                }`}
+              >
+                <Folder className="h-3.5 w-3.5" />
+                {col.name}
+              </button>
+            ))}
             <button
               onClick={() => setNewColOpen(true)}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="New folder"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <FolderPlus className="h-3.5 w-3.5" />
+              New
             </button>
           </div>
 
-          {/* All Files */}
-          <button
-            onClick={() => setActiveCollection(null)}
-            className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors text-left ${
-              activeCollection === null
-                ? "bg-primary/10 text-primary font-medium"
-                : "hover:bg-muted text-foreground"
-            }`}
-          >
-            <FolderOpen className="h-4 w-4 shrink-0" />
-            <span className="truncate">All Files</span>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {stats.file_count}
-            </span>
-          </button>
+          {/* Desktop sidebar */}
+          <div className="hidden lg:block space-y-1">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Folders
+              </p>
+              <button
+                onClick={() => setNewColOpen(true)}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="New folder"
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-          {/* Collections */}
-          {collections.map((col) => {
-            const count = allFiles.filter(
-              (f) => f.collection_id === col.id,
-            ).length;
-            return (
-              <div key={col.id} className="group relative">
-                <button
-                  onClick={() => setActiveCollection(col.id)}
-                  className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors text-left ${
-                    activeCollection === col.id
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-muted text-foreground"
-                  }`}
-                >
-                  <Folder className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{col.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground group-hover:invisible">
-                    {count}
-                  </span>
-                </button>
-                {/* Folder actions — shown on hover, replacing the count */}
-                <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+            <button
+              onClick={() => setActiveCollection(null)}
+              className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors text-left ${
+                activeCollection === null
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "hover:bg-muted text-foreground"
+              }`}
+            >
+              <FolderOpen className="h-4 w-4 shrink-0" />
+              <span className="truncate">All Files</span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {stats.file_count}
+              </span>
+            </button>
+
+            {collections.map((col) => {
+              const count = allFiles.filter(
+                (f) => f.collection_id === col.id,
+              ).length;
+              return (
+                <div key={col.id} className="group relative">
                   <button
-                    onClick={() => handleCopyCollectionLink(col.share_token)}
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Copy share link"
+                    onClick={() => setActiveCollection(col.id)}
+                    className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors text-left ${
+                      activeCollection === col.id
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-foreground"
+                    }`}
                   >
-                    <Copy className="h-3 w-3" />
+                    <Folder className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{col.name}</span>
+                    <span className="ml-auto text-xs text-muted-foreground group-hover:invisible">
+                      {count}
+                    </span>
                   </button>
-                  <button
-                    onClick={() => {
-                      setRenameColId(col.id);
-                      setRenameColName(col.name);
-                      setRenameColOpen(true);
-                    }}
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Rename"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCollection(col.id)}
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    title="Delete folder"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                    <button
+                      onClick={() => handleCopyCollectionLink(col.share_token)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Copy share link"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRenameColId(col.id);
+                        setRenameColName(col.name);
+                        setRenameColOpen(true);
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Rename"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCollection(col.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      title="Delete folder"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
 
-          {collections.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              No folders yet.
-            </p>
-          )}
+            {collections.length === 0 && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                No folders yet.
+              </p>
+            )}
+          </div>
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           {/* Collection header bar */}
           {activeCollectionData && (
             <div className="mb-4 flex items-center justify-between rounded-xl border bg-muted/30 px-4 py-2.5">
@@ -469,16 +506,20 @@ function StatCard({
 }) {
   const { bg, text } = colorMap[color];
   return (
-    <div className="rounded-2xl border bg-card p-5 shadow-sm">
+    <div className="rounded-2xl border bg-card p-3 sm:p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground truncate">
+          {label}
+        </p>
         <div
-          className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg} ${text}`}
+          className={`flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg ${bg} ${text}`}
         >
           {icon}
         </div>
       </div>
-      <p className="mt-3 text-3xl font-bold tracking-tight">{value}</p>
+      <p className="mt-2 sm:mt-3 text-xl sm:text-3xl font-bold tracking-tight truncate">
+        {value}
+      </p>
     </div>
   );
 }
