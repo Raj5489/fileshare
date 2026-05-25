@@ -18,7 +18,15 @@ async function getFileMetadata(token: string) {
       .eq("share_token", token)
       .single();
 
-    if (error || !file || file.is_deleted) return null;
+    if (error || !file || file.is_deleted) {
+      console.error("[SharePage] File lookup failed:", {
+        token,
+        error: error?.message,
+        found: !!file,
+        deleted: file?.is_deleted,
+      });
+      return null;
+    }
 
     const is_expired = file.expires_at
       ? new Date(file.expires_at) < new Date()
