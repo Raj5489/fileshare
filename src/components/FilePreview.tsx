@@ -23,13 +23,15 @@ export default function FilePreview({
 }: FilePreviewProps) {
   if (mimeType.startsWith("image/") && previewUrl) {
     return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={previewUrl}
-        alt={originalName}
-        loading="lazy"
-        className="max-h-[60vh] w-auto rounded-lg border object-contain"
-      />
+      <div className="flex justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={previewUrl}
+          alt={originalName}
+          loading="lazy"
+          className="max-h-[60vh] w-auto rounded-lg border object-contain"
+        />
+      </div>
     );
   }
 
