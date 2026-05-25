@@ -125,7 +125,9 @@ export async function POST(req: NextRequest) {
       600, // 10 minutes
     );
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = (
+      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    ).replace(/\/$/, "");
     const shareUrl = `${appUrl}/f/${share_token}`;
 
     return NextResponse.json({
