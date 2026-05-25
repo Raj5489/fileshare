@@ -16,12 +16,16 @@ async function getFileMetadata(token: string) {
         "id, share_token, original_name, mime_type, file_size, download_count, max_downloads, expires_at, is_deleted, password_hash, created_at, storage_key",
       )
       .eq("share_token", token)
-      .single();
+      .maybeSingle();
 
-    if (error || !file || file.is_deleted) {
-      console.error("[SharePage] File lookup failed:", {
+    if (error) {
+      console.error("[SharePage] DB error:", error.message, "token:", token);
+      return null;
+    }
+
+    if (!file || file.is_deleted) {
+      console.error("[SharePage] File not found or deleted:", {
         token,
-        error: error?.message,
         found: !!file,
         deleted: file?.is_deleted,
       });
@@ -49,8 +53,8 @@ async function getFileMetadata(token: string) {
           file.original_name,
           3600,
         );
-      } catch {
-        /* preview optional */
+      } catch (previewErr) {
+        console.error("[SharePage] Preview URL error:", previewErr);
       }
     }
 
@@ -68,7 +72,8 @@ async function getFileMetadata(token: string) {
       preview_url,
       created_at: file.created_at,
     };
-  } catch {
+  } catch (err) {
+    console.error("[SharePage] Unexpected error for token:", token, err);
     return null;
   }
 }
