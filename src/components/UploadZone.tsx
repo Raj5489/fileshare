@@ -515,9 +515,24 @@ export default function UploadZone({
 
       {/* Multi done summary */}
       {allDone && fileStates.length > 1 && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          All {fileStates.length} items uploaded successfully.
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            All {fileStates.length} items uploaded — share links below:
+          </div>
+          {fileStates.map((state, i) =>
+            state.result ? (
+              <div key={i}>
+                <p className="text-xs text-muted-foreground px-1 mb-1 truncate">
+                  {state.file.name}
+                </p>
+                <ShareCard
+                  shareUrl={state.result.shareUrl}
+                  token={state.result.token}
+                />
+              </div>
+            ) : null,
+          )}
         </div>
       )}
 
