@@ -366,7 +366,8 @@ export default function FileList({
         </div>
       )}
 
-      <div className="rounded-lg border overflow-x-auto">
+      {/* Desktop table */}
+      <div className="hidden sm:block rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -521,6 +522,118 @@ export default function FileList({
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-2">
+        {isLoading && files.length === 0 ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : files.length === 0 ? (
+          <p className="text-center text-muted-foreground py-10 text-sm">
+            No files here yet.
+          </p>
+        ) : (
+          files.map((file) => {
+            const Icon = getFileIcon(file.mime_type);
+            const isExpired = file.expires_at
+              ? new Date(file.expires_at) < new Date()
+              : false;
+            const isSelected = selected.has(file.share_token);
+            return (
+              <div
+                key={file.id}
+                className={`rounded-xl border bg-card p-4 space-y-3 ${isSelected ? "border-primary/40 bg-primary/5" : ""}`}
+              >
+                {/* Top row: checkbox + name + actions */}
+                <div className="flex items-start gap-3">
+                  <button
+                    onClick={() => toggleOne(file.share_token)}
+                    className="mt-0.5 shrink-0 text-muted-foreground"
+                  >
+                    {isSelected ? (
+                      <CheckSquare className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <Link
+                      href={`/f/${file.share_token}`}
+                      className="text-sm font-medium hover:underline truncate"
+                    >
+                      {file.original_name}
+                    </Link>
+                  </div>
+                </div>
+                {/* Meta */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground pl-7">
+                  <span>{formatBytes(file.file_size)}</span>
+                  <span>{formatDate(file.created_at)}</span>
+                  <span className={isExpired ? "text-destructive" : ""}>
+                    {file.expires_at
+                      ? formatDate(file.expires_at)
+                      : "Never expires"}
+                  </span>
+                  <span>
+                    {file.download_count}
+                    {file.max_downloads !== null &&
+                      ` / ${file.max_downloads}`}{" "}
+                    downloads
+                  </span>
+                </div>
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 pl-5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopyLink(file.share_token)}
+                    className="h-8 px-2 text-xs gap-1"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openExpiryDialog(file.share_token)}
+                    className="h-8 px-2 text-xs gap-1"
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Expiry
+                  </Button>
+                  {collections.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openMoveDialog([file.share_token])}
+                      className="h-8 px-2 text-xs gap-1"
+                    >
+                      <FolderInput className="h-3.5 w-3.5" />
+                      Move
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(file.share_token, file.id)}
+                    disabled={deletingId === file.id}
+                    className="h-8 px-2 text-xs gap-1 text-destructive hover:text-destructive ml-auto"
+                  >
+                    {deletingId === file.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {pagination.totalPages > 1 && (
