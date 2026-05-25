@@ -378,10 +378,8 @@ export default function UploadZone({
     setCompletedResults(newResults);
 
     // If multiple files uploaded successfully, auto-create a collection
-    // and show a single shared link for all of them
     if (newResults.length > 1) {
       try {
-        // Create a collection named after the upload batch
         const colName = `${newResults.length} files – ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
         const colRes = await fetch("/api/collections", {
           method: "POST",
@@ -390,7 +388,6 @@ export default function UploadZone({
         });
         if (colRes.ok) {
           const { collection } = await colRes.json();
-          // Add all uploaded files to the collection
           await Promise.allSettled(
             newResults.map((r) =>
               fetch(`/api/collections/${collection.id}/files`, {
@@ -400,17 +397,22 @@ export default function UploadZone({
               }),
             ),
           );
-          const appUrl =
-            process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+          const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
           setCollectionResult({
             name: colName,
-            shareUrl: `${appUrl}/c/${collection.share_token}`,
+            shareUrl,
             token: collection.share_token,
             fileCount: newResults.length,
           });
+        } else {
+          console.warn(
+            "[UploadZone] Collection API failed:",
+            colRes.status,
+            await colRes.text(),
+          );
         }
-      } catch {
-        // Collection creation failed — fall back to individual links
+      } catch (err) {
+        console.warn("[UploadZone] Collection error:", err);
       }
     }
     setUploading(false);
