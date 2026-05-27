@@ -1,8 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   FolderOpen,
@@ -17,8 +22,10 @@ import {
   Check,
   Clock,
   PackageOpen,
+  Loader2,
+  X,
 } from "lucide-react";
-import { formatBytes, formatDate } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
 import { useState } from "react";
 
 interface FileEntry {
@@ -72,6 +79,151 @@ function getFileCategory(mimeType: string) {
   return "File";
 }
 
+// ─── File Download Modal ────────────────────────────────────────────────────
+
+function FileDownloadModal({
+  file,
+  open,
+  onClose,
+}: {
+  file: FileEntry | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+
+  // Fetch preview URL when modal opens for images
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      onClose();
+      setPreviewUrl(null);
+      setPreviewLoaded(false);
+    } else if (file && file.mime_type.startsWith("image/")) {
+      // Use the share page URL to get the preview_url from metadata
+      fetch(`/api/files/${file.share_token}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.preview_url) setPreviewUrl(data.preview_url);
+        })
+        .catch(() => {});
+    }
+  };
+
+  async function handleDownload() {
+    if (!file) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/download/${file.share_token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok && data.download_url) {
+        // Trigger download without opening a new tab
+        const a = document.createElement("a");
+        a.href = data.download_url;
+        a.download = file.original_name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success("Download started!");
+      } else {
+        toast.error(data.error || "Download failed.");
+      }
+    } catch {
+      toast.error("Download failed.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  if (!file) return null;
+
+  const Icon = getFileIcon(file.mime_type);
+  const category = getFileCategory(file.mime_type);
+  const isImage = file.mime_type.startsWith("image/");
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3 pr-6">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Icon className="h-5 w-5" />
+            </div>
+            <span className="truncate text-base">{file.original_name}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Image preview */}
+        {isImage && (
+          <div className="flex justify-center rounded-lg overflow-hidden bg-muted/40 border min-h-[120px] items-center">
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt={file.original_name}
+                onLoad={() => setPreviewLoaded(true)}
+                className={`max-h-64 w-auto object-contain transition-opacity duration-300 ${previewLoaded ? "opacity-100" : "opacity-0"}`}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <Image className="h-10 w-10 opacity-30" />
+                <span className="text-xs">Loading preview…</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* File meta */}
+        <div className="grid grid-cols-3 divide-x rounded-xl border bg-muted/20 text-center">
+          <div className="px-3 py-2.5">
+            <p className="text-xs text-muted-foreground">Type</p>
+            <p className="text-sm font-semibold mt-0.5">{category}</p>
+          </div>
+          <div className="px-3 py-2.5">
+            <p className="text-xs text-muted-foreground">Size</p>
+            <p className="text-sm font-semibold mt-0.5">
+              {file.file_size_formatted}
+            </p>
+          </div>
+          <div className="px-3 py-2.5">
+            <p className="text-xs text-muted-foreground">Expires</p>
+            <p className="text-sm font-semibold mt-0.5">
+              {file.expires_at
+                ? new Date(file.expires_at).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "Never"}
+            </p>
+          </div>
+        </div>
+
+        {/* Download button */}
+        <Button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="w-full gap-2"
+          size="lg"
+        >
+          {downloading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          {downloading ? "Starting download…" : "Download File"}
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
+
 export default function CollectionPageClient({
   data,
 }: {
@@ -79,6 +231,8 @@ export default function CollectionPageClient({
 }) {
   const { collection, files } = data;
   const [copied, setCopied] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const totalSize = files.reduce((sum, f) => sum + f.file_size, 0);
   const activeFiles = files.filter((f) => !f.is_expired);
@@ -88,6 +242,11 @@ export default function CollectionPageClient({
     setCopied(true);
     toast.success("Link copied!");
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function openFileModal(file: FileEntry) {
+    setSelectedFile(file);
+    setModalOpen(true);
   }
 
   return (
@@ -132,19 +291,6 @@ export default function CollectionPageClient({
               <p className="text-lg font-bold">{activeFiles.length}</p>
               <p className="text-xs text-muted-foreground">Available</p>
             </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-            <p className="text-sm text-primary font-medium mb-1">
-              How to download
-            </p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Click{" "}
-              <span className="font-medium text-foreground">Download</span> on
-              any file below to save it to your device. Each file opens on its
-              own page where you can preview and download it.
-            </p>
           </div>
         </div>
       </div>
@@ -230,12 +376,14 @@ export default function CollectionPageClient({
                       Expired
                     </Badge>
                   ) : (
-                    <Link href={`/f/${file.share_token}`} target="_blank">
-                      <Button size="sm" className="gap-1.5 shrink-0 h-8">
-                        <Download className="h-3.5 w-3.5" />
-                        Download
-                      </Button>
-                    </Link>
+                    <Button
+                      size="sm"
+                      className="gap-1.5 shrink-0 h-8"
+                      onClick={() => openFileModal(file)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </Button>
                   )}
                 </li>
               );
@@ -251,6 +399,13 @@ export default function CollectionPageClient({
           via <span className="font-medium text-foreground">FileShare</span>
         </p>
       </div>
+
+      {/* Inline download modal */}
+      <FileDownloadModal
+        file={selectedFile}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   );
 }
