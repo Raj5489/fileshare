@@ -9,6 +9,15 @@ import { formatBytes } from "@/lib/utils";
 
 async function getFileMetadata(token: string) {
   try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    console.log(
+      "[SharePage] Env check - url:",
+      url?.slice(0, 30),
+      "key_length:",
+      key?.length,
+    );
+
     const admin = getSupabaseAdmin();
     const { data: file, error } = await admin
       .from("files")

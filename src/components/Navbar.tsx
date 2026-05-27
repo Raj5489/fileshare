@@ -131,21 +131,28 @@ export default function Navbar() {
         const urlStr = token.startsWith("http") ? token : `http://${token}`;
         const url = new URL(urlStr);
         const pathParts = url.pathname.split("/").filter(Boolean);
+
+        // Check for collection URL: /c/[token]
+        const cIndex = pathParts.indexOf("c");
+        if (cIndex !== -1 && pathParts[cIndex + 1]) {
+          setReceiveOpen(false);
+          setReceiveCode("");
+          router.push(`/c/${pathParts[cIndex + 1]}`);
+          return;
+        }
+
+        // Check for file URL: /f/[token]
         const fIndex = pathParts.indexOf("f");
         if (fIndex !== -1 && pathParts[fIndex + 1]) {
           token = pathParts[fIndex + 1];
         } else {
           const lastPart = pathParts.pop();
-          if (lastPart) {
-            token = lastPart;
-          }
+          if (lastPart) token = lastPart;
         }
       } catch {
         const parts = token.split("/");
         const lastPart = parts.filter(Boolean).pop();
-        if (lastPart) {
-          token = lastPart;
-        }
+        if (lastPart) token = lastPart;
       }
     }
 
