@@ -375,21 +375,53 @@ export default function UploadZone({
     if (errorCount > 0)
       toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
 
-    // If multiple files uploaded successfully, auto-create a collection
+    // If multiple files uploaded successfully, auto-create or reuse today's collection
     if (newResults.length > 1) {
       try {
-        const colName = `${newResults.length} files – ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
-
-        // Try authenticated collection first
-        const colRes = await fetch("/api/collections", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: colName }),
+        const todayLabel = new Date().toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
         });
 
-        if (colRes.ok) {
-          // Logged-in user: link files via the collection files endpoint
-          const { collection } = await colRes.json();
+        // Try authenticated flow first
+        const listRes = await fetch("/api/collections");
+
+        if (listRes.ok) {
+          // Logged-in user
+          const { collections: existingCols } = await listRes.json();
+
+          // Find a collection created today (same calendar day)
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+
+          const todayCol = (
+            existingCols as Array<{
+              id: string;
+              name: string;
+              share_token: string;
+              created_at: string;
+            }>
+          ).find((c) => new Date(c.created_at) >= todayStart);
+
+          let collection: { id: string; name: string; share_token: string };
+
+          if (todayCol) {
+            // Reuse today's collection — just add files to it
+            collection = todayCol;
+          } else {
+            // Create a new collection for today
+            const colName = `${newResults.length} files – ${todayLabel}`;
+            const colRes = await fetch("/api/collections", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: colName }),
+            });
+            if (!colRes.ok) throw new Error("Failed to create collection");
+            const data = await colRes.json();
+            collection = data.collection;
+          }
+
+          // Link new files to the collection
           await Promise.allSettled(
             newResults.map((r) =>
               fetch(`/api/collections/${collection.id}/files`, {
@@ -399,15 +431,17 @@ export default function UploadZone({
               }),
             ),
           );
+
           const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
           setCollectionResult({
-            name: colName,
+            name: collection.name,
             shareUrl,
             token: collection.share_token,
             fileCount: newResults.length,
           });
         } else {
-          // Guest user: use the guest collection endpoint which accepts tokens directly
+          // Guest user: use the guest collection endpoint
+          const colName = `${newResults.length} files – ${todayLabel}`;
           const guestRes = await fetch("/api/collections/guest", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -433,13 +467,11 @@ export default function UploadZone({
               guestRes.status,
               errText,
             );
-            // Fall back to individual links
             setCompletedResults(newResults);
           }
         }
       } catch (err) {
         console.warn("[UploadZone] Collection error:", err);
-        // Fall back to individual links
         setCompletedResults(newResults);
       }
     } else {
