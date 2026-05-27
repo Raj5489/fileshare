@@ -15,7 +15,7 @@ import {
   Copy,
   Check,
   Clock,
-  PackageOpen,
+  UploadCloud,
   Loader2,
   ImageOff,
 } from "lucide-react";
@@ -269,8 +269,8 @@ export default function CollectionPageClient({
 
         <div className="px-6 py-5">
           <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm shadow-primary/10 ring-1 ring-primary/10">
-              <PackageOpen className="h-7 w-7" />
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/30">
+              <UploadCloud className="h-7 w-7" />
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold tracking-tight truncate">
