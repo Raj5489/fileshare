@@ -17,6 +17,7 @@ import {
   Clock,
   PackageOpen,
   Loader2,
+  ImageOff,
 } from "lucide-react";
 import { formatBytes, getFileIcon, getFileCategory } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -144,7 +145,7 @@ function FileDownloadModal({
           <div className="flex justify-center items-center rounded-lg overflow-hidden bg-muted/40 border min-h-[140px]">
             {previewError ? (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
-                <Image className="h-10 w-10 opacity-30" />
+                <ImageOff className="h-10 w-10 opacity-30" />
                 <span className="text-xs">Preview unavailable</span>
               </div>
             ) : previewUrl ? (

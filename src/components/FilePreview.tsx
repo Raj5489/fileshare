@@ -13,6 +13,7 @@ interface FilePreviewProps {
   previewUrl: string | null;
   originalName: string;
   fileSize: string;
+  onDownload?: () => void;
 }
 
 export default function FilePreview({
@@ -20,6 +21,7 @@ export default function FilePreview({
   previewUrl,
   originalName,
   fileSize,
+  onDownload,
 }: FilePreviewProps) {
   if (mimeType.startsWith("image/") && previewUrl) {
     return (
