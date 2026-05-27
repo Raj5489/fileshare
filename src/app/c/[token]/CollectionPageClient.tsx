@@ -23,10 +23,9 @@ import {
   Clock,
   PackageOpen,
   Loader2,
-  X,
 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface FileEntry {
   share_token: string;
@@ -93,23 +92,37 @@ function FileDownloadModal({
   const [downloading, setDownloading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
 
-  // Fetch preview URL when modal opens for images
-  const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) {
-      onClose();
-      setPreviewUrl(null);
-      setPreviewLoaded(false);
-    } else if (file && file.mime_type.startsWith("image/")) {
-      // Use the share page URL to get the preview_url from metadata
-      fetch(`/api/files/${file.share_token}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.preview_url) setPreviewUrl(data.preview_url);
-        })
-        .catch(() => {});
-    }
-  };
+  // Fetch preview URL whenever this modal opens for an image
+  useEffect(() => {
+    if (!open || !file) return;
+    if (!file.mime_type.startsWith("image/")) return;
+
+    let cancelled = false;
+    setPreviewUrl(null);
+    setPreviewLoaded(false);
+    setPreviewError(false);
+
+    fetch(`/api/files/${file.share_token}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          if (data.preview_url) {
+            setPreviewUrl(data.preview_url);
+          } else {
+            setPreviewError(true);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewError(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, file]);
 
   async function handleDownload() {
     if (!file) return;
@@ -122,7 +135,6 @@ function FileDownloadModal({
       });
       const data = await res.json();
       if (res.ok && data.download_url) {
-        // Trigger download without opening a new tab
         const a = document.createElement("a");
         a.href = data.download_url;
         a.download = file.original_name;
@@ -147,7 +159,12 @@ function FileDownloadModal({
   const isImage = file.mime_type.startsWith("image/");
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 pr-6">
@@ -160,18 +177,33 @@ function FileDownloadModal({
 
         {/* Image preview */}
         {isImage && (
-          <div className="flex justify-center rounded-lg overflow-hidden bg-muted/40 border min-h-[120px] items-center">
-            {previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewUrl}
-                alt={file.original_name}
-                onLoad={() => setPreviewLoaded(true)}
-                className={`max-h-64 w-auto object-contain transition-opacity duration-300 ${previewLoaded ? "opacity-100" : "opacity-0"}`}
-              />
-            ) : (
+          <div className="flex justify-center items-center rounded-lg overflow-hidden bg-muted/40 border min-h-[140px]">
+            {previewError ? (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Image className="h-10 w-10 opacity-30" />
+                <span className="text-xs">Preview unavailable</span>
+              </div>
+            ) : previewUrl ? (
+              <>
+                {!previewLoaded && (
+                  <div className="absolute flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin opacity-40" />
+                  </div>
+                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt={file.original_name}
+                  onLoad={() => setPreviewLoaded(true)}
+                  onError={() => setPreviewError(true)}
+                  className={`max-h-64 w-auto object-contain transition-opacity duration-300 ${
+                    previewLoaded ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin opacity-40" />
                 <span className="text-xs">Loading preview…</span>
               </div>
             )}
@@ -253,7 +285,6 @@ export default function CollectionPageClient({
     <div className="w-full max-w-2xl space-y-5">
       {/* Hero header */}
       <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-        {/* Top accent bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
 
         <div className="p-6">
@@ -329,17 +360,14 @@ export default function CollectionPageClient({
                   key={file.share_token}
                   className="flex items-center gap-3 px-5 py-4 hover:bg-muted/20 transition-colors"
                 >
-                  {/* Number */}
                   <span className="text-xs text-muted-foreground w-5 shrink-0 text-center">
                     {i + 1}
                   </span>
 
-                  {/* Icon */}
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  {/* Info */}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
                       {file.original_name}
@@ -370,7 +398,6 @@ export default function CollectionPageClient({
                     </div>
                   </div>
 
-                  {/* Action */}
                   {file.is_expired ? (
                     <Badge variant="secondary" className="shrink-0 text-xs">
                       Expired
@@ -392,7 +419,7 @@ export default function CollectionPageClient({
         )}
       </div>
 
-      {/* Footer hint */}
+      {/* Footer */}
       <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center">
         <p className="text-xs text-muted-foreground">
           🔒 Files are securely stored and will expire as shown above. Shared
