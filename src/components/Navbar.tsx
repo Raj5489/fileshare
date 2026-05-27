@@ -116,7 +116,7 @@ export default function Navbar() {
     router.refresh();
   }
 
-  function handleReceiveSubmit(e: React.FormEvent) {
+  async function handleReceiveSubmit(e: React.FormEvent) {
     e.preventDefault();
     setReceiveError("");
 
@@ -126,6 +126,7 @@ export default function Navbar() {
       return;
     }
 
+    // If it contains a slash, parse as URL
     if (token.includes("/")) {
       try {
         const urlStr = token.startsWith("http") ? token : `http://${token}`;
@@ -162,9 +163,29 @@ export default function Navbar() {
       return;
     }
 
-    setReceiveOpen(false);
-    setReceiveCode("");
-    router.push(`/f/${token}`);
+    // For bare tokens, check if it's a file or collection token
+    // by probing the files API — if not found, try collection route
+    setReceiveError("Checking…");
+    try {
+      const res = await fetch(`/api/files/${token}`);
+      const data = await res.json();
+      setReceiveOpen(false);
+      setReceiveCode("");
+      setReceiveError("");
+      if (res.ok && !data.error) {
+        // It's a file token
+        router.push(`/f/${token}`);
+      } else {
+        // Not a file — try as a collection token
+        router.push(`/c/${token}`);
+      }
+    } catch {
+      // Network error — just try file route as fallback
+      setReceiveOpen(false);
+      setReceiveCode("");
+      setReceiveError("");
+      router.push(`/f/${token}`);
+    }
   }
 
   return (
@@ -193,7 +214,7 @@ export default function Navbar() {
                 <DialogTitle>Receive File</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleReceiveSubmit} className="space-y-4">
-                {receiveError && (
+                {receiveError && receiveError !== "Checking…" && (
                   <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                     {receiveError}
                   </p>
@@ -209,8 +230,19 @@ export default function Navbar() {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  Go to File
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={receiveError === "Checking…"}
+                >
+                  {receiveError === "Checking…" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Checking…
+                    </>
+                  ) : (
+                    "Go to File"
+                  )}
                 </Button>
               </form>
             </DialogContent>
