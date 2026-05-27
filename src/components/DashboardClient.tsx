@@ -227,10 +227,19 @@ export default function DashboardClient() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">My Files</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight gradient-text">
+            My Files
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {stats.file_count > 0
+              ? `${stats.file_count} file${stats.file_count !== 1 ? "s" : ""} · ${formatBytes(stats.storage_used)} used`
+              : "Upload your first file to get started"}
+          </p>
+        </div>
         <Dialog open={uploadOpen} onOpenChange={handleOpenChange}>
           <DialogTrigger>
-            <Button className="gap-2">
+            <Button className="gap-2 btn-shimmer text-white shadow-md shadow-primary/20">
               <UploadCloud className="h-4 w-4" />
               Upload Files
             </Button>
@@ -495,9 +504,30 @@ export default function DashboardClient() {
 }
 
 const colorMap = {
-  blue: { bg: "bg-blue-500/10", text: "text-blue-500" },
-  violet: { bg: "bg-violet-500/10", text: "text-violet-500" },
-  green: { bg: "bg-emerald-500/10", text: "text-emerald-500" },
+  blue: {
+    bg: "bg-blue-500/10",
+    text: "text-blue-600",
+    glow: "shadow-blue-500/20",
+    gradient: "from-blue-500/8 to-indigo-500/5",
+    border: "hover:border-blue-300/50",
+    bar: "bg-gradient-to-r from-blue-400 to-indigo-500",
+  },
+  violet: {
+    bg: "bg-violet-500/10",
+    text: "text-violet-600",
+    glow: "shadow-violet-500/20",
+    gradient: "from-violet-500/8 to-purple-500/5",
+    border: "hover:border-violet-300/50",
+    bar: "bg-gradient-to-r from-violet-400 to-purple-500",
+  },
+  green: {
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-600",
+    glow: "shadow-emerald-500/20",
+    gradient: "from-emerald-500/8 to-teal-500/5",
+    border: "hover:border-emerald-300/50",
+    bar: "bg-gradient-to-r from-emerald-400 to-teal-500",
+  },
 };
 
 function StatCard({
@@ -511,22 +541,48 @@ function StatCard({
   value: string;
   color: keyof typeof colorMap;
 }) {
-  const { bg, text } = colorMap[color];
+  const c = colorMap[color];
   return (
-    <div className="rounded-2xl border bg-card p-3 sm:p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-xs sm:text-sm text-muted-foreground truncate">
-          {label}
-        </p>
-        <div
-          className={`flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg ${bg} ${text}`}
-        >
-          {icon}
-        </div>
+    <div
+      className={`
+        group relative overflow-hidden rounded-2xl border bg-card p-4 sm:p-5
+        shadow-sm transition-all duration-300 cursor-default
+        hover:shadow-lg hover:-translate-y-1 hover:scale-[1.02]
+        ${c.glow} ${c.border}
+        [transform-style:preserve-3d]
+      `}
+      style={{ perspective: "600px" }}
+    >
+      {/* Gradient wash */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br ${c.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none`}
+      />
+
+      {/* Top accent bar */}
+      <div
+        className={`absolute top-0 left-0 right-0 h-0.5 ${c.bar} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
+      />
+
+      {/* Shine sweep on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none overflow-hidden rounded-2xl">
+        <div className="absolute -inset-full top-0 h-full w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/8 to-transparent translate-x-[-100%] group-hover:translate-x-[300%] transition-transform duration-700" />
       </div>
-      <p className="mt-2 sm:mt-3 text-xl sm:text-3xl font-bold tracking-tight truncate">
-        {value}
-      </p>
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between">
+          <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">
+            {label}
+          </p>
+          <div
+            className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl ${c.bg} ${c.text} shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}
+          >
+            {icon}
+          </div>
+        </div>
+        <p className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight truncate">
+          {value}
+        </p>
+      </div>
     </div>
   );
 }
