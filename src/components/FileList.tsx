@@ -154,7 +154,12 @@ export default function FileList({
   }
 
   function refresh() {
-    onFilesChanged ? onFilesChanged() : fetchPage(pagination.page);
+    // Always notify parent to re-fetch (keeps allFiles in sync)
+    if (onFilesChanged) {
+      onFilesChanged();
+    } else {
+      fetchPage(pagination.page);
+    }
   }
 
   async function handleDelete(token: string, id: string) {
@@ -164,6 +169,8 @@ export default function FileList({
       const res = await fetch(`/api/files/${token}`, { method: "DELETE" });
       if (res.ok) {
         toast.success("File deleted.");
+        // Optimistically remove from local state immediately
+        setFiles((prev) => prev.filter((f) => f.id !== id));
         refresh();
       } else {
         const d = await res.json();
@@ -196,6 +203,8 @@ export default function FileList({
         toast.success(
           `Deleted ${data.affected} file${data.affected > 1 ? "s" : ""}.`,
         );
+        // Optimistically remove from local state immediately
+        setFiles((prev) => prev.filter((f) => !selected.has(f.share_token)));
         setSelected(new Set());
         refresh();
       } else {

@@ -430,7 +430,7 @@ export default function DashboardClient() {
           <FileList
             initialFiles={files}
             initialPagination={filteredPagination}
-            onRefresh={activeCollection ? undefined : fetchData}
+            onRefresh={fetchData}
             collections={collections}
             onFilesChanged={() => fetchData(pagination.page)}
             loading={loading}
