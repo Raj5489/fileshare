@@ -211,7 +211,6 @@ export default function SharePageClient({ metadata }: { metadata: Metadata }) {
               previewUrl={metadata.preview_url}
               originalName={metadata.original_name}
               fileSize={metadata.file_size_formatted}
-              onDownload={handleDownload}
             />
           </div>
         )}
