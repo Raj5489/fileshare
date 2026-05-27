@@ -186,16 +186,23 @@ export default function DashboardClient() {
   }
 
   async function handleDeleteCollection(id: string) {
-    if (!confirm("Delete this collection? Files inside will not be deleted."))
+    if (!confirm("Delete this folder? Files inside will stay in All Files."))
       return;
     const res = await fetch(`/api/collections/${id}`, { method: "DELETE" });
     if (res.ok) {
-      toast.success("Collection deleted.");
+      toast.success("Folder deleted. Files moved to All Files.");
       if (activeCollection === id) setActiveCollection(null);
       setCollections((prev) => prev.filter((c) => c.id !== id));
+      // Immediately clear collection_id on affected files in local state
+      // so they appear in All Files right away without waiting for fetchData
+      setAllFiles((prev) =>
+        prev.map((f) =>
+          f.collection_id === id ? { ...f, collection_id: null } : f,
+        ),
+      );
       fetchData(1);
     } else {
-      toast.error("Failed to delete collection.");
+      toast.error("Failed to delete folder.");
     }
   }
 
