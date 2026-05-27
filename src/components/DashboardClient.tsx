@@ -244,7 +244,7 @@ export default function DashboardClient() {
               Upload Files
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Upload Files</DialogTitle>
             </DialogHeader>
@@ -253,7 +253,7 @@ export default function DashboardClient() {
                 Upload in progress — please don&apos;t close this window.
               </p>
             )}
-            <div className="flex justify-center py-4">
+            <div className="flex justify-center py-2">
               <UploadZone
                 onUploadSuccess={handleUploadSuccess}
                 onUploadingChange={setUploading}

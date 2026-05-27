@@ -472,7 +472,7 @@ export default function UploadZone({
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full max-w-xl space-y-3">
+    <div className="w-full max-w-xl space-y-3 min-w-0">
       {/* Drop zone */}
       {!singleResult && (
         <div
