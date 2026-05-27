@@ -375,18 +375,20 @@ export default function UploadZone({
     if (errorCount > 0)
       toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
 
-    setCompletedResults(newResults);
-
     // If multiple files uploaded successfully, auto-create a collection
     if (newResults.length > 1) {
       try {
         const colName = `${newResults.length} files – ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+
+        // Try authenticated collection first
         const colRes = await fetch("/api/collections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: colName }),
         });
+
         if (colRes.ok) {
+          // Logged-in user: link files via the collection files endpoint
           const { collection } = await colRes.json();
           await Promise.allSettled(
             newResults.map((r) =>
@@ -405,15 +407,44 @@ export default function UploadZone({
             fileCount: newResults.length,
           });
         } else {
-          console.warn(
-            "[UploadZone] Collection API failed:",
-            colRes.status,
-            await colRes.text(),
-          );
+          // Guest user: use the guest collection endpoint which accepts tokens directly
+          const guestRes = await fetch("/api/collections/guest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: colName,
+              tokens: newResults.map((r) => r.token),
+            }),
+          });
+
+          if (guestRes.ok) {
+            const { collection } = await guestRes.json();
+            const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
+            setCollectionResult({
+              name: colName,
+              shareUrl,
+              token: collection.share_token,
+              fileCount: newResults.length,
+            });
+          } else {
+            const errText = await guestRes.text();
+            console.warn(
+              "[UploadZone] Guest collection API failed:",
+              guestRes.status,
+              errText,
+            );
+            // Fall back to individual links
+            setCompletedResults(newResults);
+          }
         }
       } catch (err) {
         console.warn("[UploadZone] Collection error:", err);
+        // Fall back to individual links
+        setCompletedResults(newResults);
       }
+    } else {
+      // Single file — just set completed results
+      setCompletedResults(newResults);
     }
     setUploading(false);
     onUploadingChange?.(false);
