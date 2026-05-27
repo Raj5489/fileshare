@@ -1,19 +1,40 @@
 export default function Footer() {
   return (
-    <footer className="border-t px-6 py-5">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 sm:flex-row">
-        <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} FileShare. All rights reserved.
-        </p>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          Built by{" "}
-          <span className="font-medium text-foreground">Raj Parmar</span>
-          <span className="mx-1 text-muted-foreground/40">·</span>
+    <footer className="border-t border-border/60 bg-muted/20 px-6 py-6">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+            <svg
+              className="h-3.5 w-3.5 text-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path
+                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <span className="text-xs font-semibold text-foreground">
+            FileShare
+          </span>
+          <span className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} · All rights reserved
+          </span>
+        </div>
+
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Built by</span>
+          <span className="font-semibold text-foreground">Raj Parmar</span>
+          <span className="text-border">·</span>
           <a
             href="https://github.com/Raj5489"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-foreground transition-colors"
+            className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-muted hover:text-foreground transition-colors"
           >
             <svg
               className="h-3.5 w-3.5"
@@ -25,12 +46,11 @@ export default function Footer() {
             </svg>
             GitHub
           </a>
-          <span className="mx-1 text-muted-foreground/40">·</span>
           <a
             href="https://www.linkedin.com/in/raj-parmar-22261934b"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-foreground transition-colors"
+            className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-muted hover:text-foreground transition-colors"
           >
             <svg
               className="h-3.5 w-3.5"

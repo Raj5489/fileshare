@@ -168,16 +168,16 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md px-6 py-3">
+    <nav className="sticky top-0 z-50 border-b border-border/60 bg-card/75 backdrop-blur-xl px-6 py-3 shadow-sm shadow-black/5">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
         <Link
           href={user ? "/dashboard" : "/"}
-          className="flex items-center gap-2.5 text-xl font-bold tracking-tight"
+          className="flex items-center gap-2.5 text-xl font-bold tracking-tight group"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <UploadCloud className="h-5 w-5" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/30 transition-transform group-hover:scale-105">
+            <UploadCloud className="h-4.5 w-4.5" />
           </div>
-          <span>FileShare</span>
+          <span className="gradient-text">FileShare</span>
         </Link>
 
         <div className="flex items-center gap-2">
