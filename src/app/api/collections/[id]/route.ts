@@ -80,23 +80,51 @@ export async function DELETE(
     const { id } = await params;
     const admin = getSupabaseAdmin();
 
-    // Unlink files from this collection first
-    await admin
+    // Step 1: Verify the collection belongs to this user
+    const { data: collection, error: fetchError } = await admin
+      .from("collections")
+      .select("id")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (fetchError || !collection) {
+      return NextResponse.json(
+        { error: "Collection not found." },
+        { status: 404 },
+      );
+    }
+
+    // Step 2: Explicitly unlink all files from this collection
+    // (the FK ON DELETE SET NULL also handles this, but we do it
+    // explicitly first to ensure files are never accidentally deleted)
+    const { error: unlinkError } = await admin
       .from("files")
       .update({ collection_id: null })
       .eq("collection_id", id);
 
+    if (unlinkError) {
+      console.error("[Collections/DELETE] Unlink error:", unlinkError);
+      return NextResponse.json(
+        { error: "Failed to unlink files from collection." },
+        { status: 500 },
+      );
+    }
+
+    // Step 3: Delete the collection
     const { error } = await admin
       .from("collections")
       .delete()
       .eq("id", id)
       .eq("user_id", user.id);
 
-    if (error)
+    if (error) {
+      console.error("[Collections/DELETE] Delete error:", error);
       return NextResponse.json(
         { error: "Failed to delete collection." },
         { status: 500 },
       );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
