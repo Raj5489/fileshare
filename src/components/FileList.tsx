@@ -308,50 +308,54 @@ export default function FileList({
     <div className="space-y-3">
       {/* Bulk toolbar */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 rounded-xl border bg-primary/5 border-primary/20 px-4 py-2.5">
-          <span className="text-sm font-medium text-primary mr-2">
-            {selected.size} selected
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => openExpiryDialog(null)}
-          >
-            <Clock className="h-3.5 w-3.5" />
-            Set Expiry
-          </Button>
-          {collections.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => openMoveDialog(Array.from(selected))}
-            >
-              <FolderInput className="h-3.5 w-3.5" />
-              Move to Folder
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
-            onClick={handleBulkDelete}
-            disabled={bulkDeleting}
-          >
-            {bulkDeleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-            Delete
-          </Button>
-          <button
-            onClick={() => setSelected(new Set())}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-          >
-            Clear
-          </button>
+        <div className="rounded-xl border bg-primary/5 border-primary/20 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-primary">
+              {selected.size} selected
+            </span>
+            <div className="flex flex-wrap gap-1.5 ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-7 text-xs"
+                onClick={() => openExpiryDialog(null)}
+              >
+                <Clock className="h-3 w-3" />
+                Expiry
+              </Button>
+              {collections.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-7 text-xs"
+                  onClick={() => openMoveDialog(Array.from(selected))}
+                >
+                  <FolderInput className="h-3 w-3" />
+                  Move
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-7 text-xs text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}
+                Delete
+              </Button>
+              <button
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-muted-foreground hover:text-foreground px-1"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

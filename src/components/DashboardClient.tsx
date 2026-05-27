@@ -291,10 +291,13 @@ export default function DashboardClient() {
         {/* Collections — horizontal on mobile, vertical sidebar on desktop */}
         <aside className="lg:w-52 lg:shrink-0">
           {/* Mobile folder strip */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
+          <div
+            className="flex items-center gap-2 overflow-x-auto pb-1 lg:hidden scrollbar-none"
+            style={{ scrollbarWidth: "none" }}
+          >
             <button
               onClick={() => setActiveCollection(null)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors whitespace-nowrap ${
                 activeCollection === null
                   ? "bg-primary/10 text-primary font-medium"
                   : "bg-muted text-foreground"
@@ -307,19 +310,19 @@ export default function DashboardClient() {
               <button
                 key={col.id}
                 onClick={() => setActiveCollection(col.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors whitespace-nowrap max-w-[120px] ${
                   activeCollection === col.id
                     ? "bg-primary/10 text-primary font-medium"
                     : "bg-muted text-foreground"
                 }`}
               >
-                <Folder className="h-3.5 w-3.5" />
-                {col.name}
+                <Folder className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{col.name}</span>
               </button>
             ))}
             <button
               onClick={() => setNewColOpen(true)}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
             >
               <FolderPlus className="h-3.5 w-3.5" />
               New
@@ -569,17 +572,17 @@ function StatCard({
       </div>
 
       <div className="relative z-10">
-        <div className="flex items-center justify-between">
-          <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[11px] sm:text-sm font-medium text-muted-foreground leading-tight">
             {label}
           </p>
           <div
-            className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl ${c.bg} ${c.text} shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}
+            className={`flex h-7 w-7 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl ${c.bg} ${c.text} shadow-sm transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}
           >
             {icon}
           </div>
         </div>
-        <p className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight truncate">
+        <p className="mt-2 sm:mt-3 text-xl sm:text-3xl font-bold tracking-tight break-all leading-tight">
           {value}
         </p>
       </div>

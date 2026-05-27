@@ -46,9 +46,9 @@ export default function ShareCard({ shareUrl, token }: ShareCardProps) {
       <div className="p-5 space-y-5">
         {/* URL row */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2.5 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2.5">
             <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="flex-1 truncate text-sm font-mono text-foreground/80">
+            <span className="min-w-0 flex-1 truncate text-sm font-mono text-foreground/80">
               {shareUrl}
             </span>
           </div>
@@ -66,7 +66,9 @@ export default function ShareCard({ shareUrl, token }: ShareCardProps) {
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            {copied ? "Copied!" : "Copy"}
+            <span className="hidden xs:inline">
+              {copied ? "Copied!" : "Copy"}
+            </span>
           </Button>
         </div>
 
