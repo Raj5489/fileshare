@@ -3,22 +3,15 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import {
-  Download,
-  Loader2,
-  Eye,
-  Calendar,
-  Shield,
-  FileIcon,
-  Image,
-  FileText,
-  Film,
-  Music,
-  Archive,
-} from "lucide-react";
+import { Download, Loader2, Eye, Calendar, Shield } from "lucide-react";
 import FilePreview from "@/components/FilePreview";
 import PasswordGate from "@/components/PasswordGate";
-import { formatDate, formatBytes } from "@/lib/utils";
+import {
+  formatDate,
+  formatBytes,
+  getFileIcon,
+  getFileCategory,
+} from "@/lib/utils";
 
 interface Metadata {
   token: string;
@@ -31,42 +24,6 @@ interface Metadata {
   has_password: boolean;
   preview_url: string | null;
   created_at: string;
-}
-
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith("image/")) return Image;
-  if (mimeType === "application/pdf") return FileText;
-  if (mimeType.startsWith("video/")) return Film;
-  if (mimeType.startsWith("audio/")) return Music;
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("tar") ||
-    mimeType.includes("7z")
-  )
-    return Archive;
-  return FileIcon;
-}
-
-function getFileCategory(mimeType: string): string {
-  if (mimeType.startsWith("image/")) return "Image";
-  if (mimeType === "application/pdf") return "PDF Document";
-  if (mimeType.startsWith("video/")) return "Video";
-  if (mimeType.startsWith("audio/")) return "Audio";
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("tar") ||
-    mimeType.includes("7z") ||
-    mimeType.includes("rar")
-  )
-    return "Archive";
-  if (mimeType.startsWith("text/")) return "Text File";
-  if (mimeType.includes("word") || mimeType.includes("document"))
-    return "Document";
-  if (mimeType.includes("sheet") || mimeType.includes("excel"))
-    return "Spreadsheet";
-  if (mimeType.includes("presentation") || mimeType.includes("powerpoint"))
-    return "Presentation";
-  return "File";
 }
 
 export default function SharePageClient({ metadata }: { metadata: Metadata }) {

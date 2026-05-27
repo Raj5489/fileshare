@@ -27,18 +27,12 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  File as FileIcon,
-  Image,
-  FileText,
-  Film,
-  Music,
-  Archive,
   FolderInput,
   CheckSquare,
   Square,
   Minus,
 } from "lucide-react";
-import { formatBytes, formatDate } from "@/lib/utils";
+import { formatBytes, formatDate, getFileIcon } from "@/lib/utils";
 
 const EXPIRY_OPTIONS = [
   { value: "1h", label: "1 Hour" },
@@ -81,20 +75,6 @@ interface FileListProps {
   onFilesChanged?: () => void;
   collections?: Collection[];
   loading?: boolean;
-}
-
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith("image/")) return Image;
-  if (mimeType === "application/pdf") return FileText;
-  if (mimeType.startsWith("video/")) return Film;
-  if (mimeType.startsWith("audio/")) return Music;
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("tar") ||
-    mimeType.includes("7z")
-  )
-    return Archive;
-  return FileIcon;
 }
 
 export default function FileList({

@@ -11,12 +11,6 @@ import {
 import { toast } from "sonner";
 import {
   FolderOpen,
-  File as FileIcon,
-  Image,
-  FileText,
-  Film,
-  Music,
-  Archive,
   Download,
   Copy,
   Check,
@@ -24,7 +18,7 @@ import {
   PackageOpen,
   Loader2,
 } from "lucide-react";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, getFileIcon, getFileCategory } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
 interface FileEntry {
@@ -46,36 +40,6 @@ interface CollectionData {
     file_count: number;
   };
   files: FileEntry[];
-}
-
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith("image/")) return Image;
-  if (mimeType === "application/pdf") return FileText;
-  if (mimeType.startsWith("video/")) return Film;
-  if (mimeType.startsWith("audio/")) return Music;
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("tar") ||
-    mimeType.includes("7z")
-  )
-    return Archive;
-  return FileIcon;
-}
-
-function getFileCategory(mimeType: string) {
-  if (mimeType.startsWith("image/")) return "Image";
-  if (mimeType === "application/pdf") return "PDF";
-  if (mimeType.startsWith("video/")) return "Video";
-  if (mimeType.startsWith("audio/")) return "Audio";
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("tar") ||
-    mimeType.includes("7z") ||
-    mimeType.includes("rar")
-  )
-    return "Archive";
-  if (mimeType.startsWith("text/")) return "Text";
-  return "File";
 }
 
 // ─── File Download Modal ────────────────────────────────────────────────────

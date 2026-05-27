@@ -126,11 +126,8 @@ export async function POST(
       900,
     );
 
-    // Increment download count atomically
-    await admin
-      .from("files")
-      .update({ download_count: file.download_count + 1 })
-      .eq("id", file.id);
+    // Increment download count atomically using DB-level increment
+    await admin.rpc("increment_download_count", { file_id: file.id });
 
     return NextResponse.json({
       download_url,
