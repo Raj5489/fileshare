@@ -652,6 +652,29 @@ export default function UploadZone({
                   >
                     <Settings2 className="h-4 w-4" />
                     Options
+                    {/* Show active option indicators */}
+                    {(expiresIn !== "24h" || password || maxDownloads) && (
+                      <span className="flex items-center gap-1 ml-0.5">
+                        {expiresIn !== "24h" && (
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
+                            {
+                              EXPIRY_OPTIONS.find((o) => o.value === expiresIn)
+                                ?.label
+                            }
+                          </span>
+                        )}
+                        {password && (
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
+                            🔒
+                          </span>
+                        )}
+                        {maxDownloads && (
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
+                            ↓{maxDownloads}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-sm">
@@ -707,6 +730,39 @@ export default function UploadZone({
                       />
                     </div>
                   </div>
+                  {/* Active options summary */}
+                  <div className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+                    <p className="font-medium text-foreground">
+                      Active settings:
+                    </p>
+                    <p>
+                      ⏱ Expires:{" "}
+                      <span className="font-medium text-foreground">
+                        {
+                          EXPIRY_OPTIONS.find((o) => o.value === expiresIn)
+                            ?.label
+                        }
+                      </span>
+                    </p>
+                    <p>
+                      🔒 Password:{" "}
+                      <span className="font-medium text-foreground">
+                        {password ? "Set" : "None"}
+                      </span>
+                    </p>
+                    <p>
+                      ⬇️ Max downloads:{" "}
+                      <span className="font-medium text-foreground">
+                        {maxDownloads || "Unlimited"}
+                      </span>
+                    </p>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => setOptionsOpen(false)}
+                  >
+                    Apply Settings
+                  </Button>
                 </DialogContent>
               </Dialog>
             )}
