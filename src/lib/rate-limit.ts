@@ -16,11 +16,30 @@ function makeLimiter(
       }),
     };
   }
-  return new Ratelimit({
+  const ratelimit = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(requests, window as `${number} s`),
     prefix: `ratelimit:${prefix}`,
   });
+
+  return {
+    limit: async (identifier: string) => {
+      try {
+        return await ratelimit.limit(identifier);
+      } catch (err) {
+        console.warn(
+          `[RateLimit] Redis error for "${prefix}", failing open:`,
+          err instanceof Error ? err.message : err
+        );
+        return {
+          success: true,
+          limit: requests,
+          remaining: requests,
+          reset: 0,
+        };
+      }
+    },
+  };
 }
 
 export const guestUploadLimit = makeLimiter("guest_upload", 50, "1 h");

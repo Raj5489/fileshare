@@ -274,8 +274,8 @@ export default function UploadZone({
       });
 
       if (!presignedRes.ok) {
-        const err = await presignedRes.json();
-        throw new Error(err.error || "Failed to get upload URL.");
+        const err = await presignedRes.json().catch(() => ({}));
+        throw new Error(err.error || `Failed to get upload URL (${presignedRes.status})`);
       }
 
       const { token, presignedUrl, shareUrl } = await presignedRes.json();
@@ -289,10 +289,10 @@ export default function UploadZone({
         xhr.addEventListener("load", () =>
           xhr.status >= 200 && xhr.status < 300
             ? resolve()
-            : reject(new Error("Upload failed.")),
+            : reject(new Error(`Storage upload failed (${xhr.status}). Check R2 CORS settings.`)),
         );
         xhr.addEventListener("error", () =>
-          reject(new Error("Network error.")),
+          reject(new Error("Storage upload network error. Ensure Cloudflare R2 CORS allows this domain.")),
         );
         xhr.open("PUT", presignedUrl);
         xhr.setRequestHeader(
