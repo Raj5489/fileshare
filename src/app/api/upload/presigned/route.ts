@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
       presignedUrl,
       shareUrl,
       storageKey: storage_key,
+      mimeType: mime_type,
     });
   } catch (err) {
     console.error("[Upload/Presigned] Error:", err);

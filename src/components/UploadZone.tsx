@@ -278,7 +278,7 @@ export default function UploadZone({
         throw new Error(err.error || `Failed to get upload URL (${presignedRes.status})`);
       }
 
-      const { token, presignedUrl, shareUrl } = await presignedRes.json();
+      const { token, presignedUrl, shareUrl, mimeType } = await presignedRes.json();
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -297,7 +297,7 @@ export default function UploadZone({
         xhr.open("PUT", presignedUrl);
         xhr.setRequestHeader(
           "Content-Type",
-          file.type || "application/octet-stream",
+          mimeType || file.type || "application/octet-stream",
         );
         xhr.send(file);
       });
