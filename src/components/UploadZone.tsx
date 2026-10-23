@@ -245,12 +245,44 @@ export default function UploadZone({
     setFileStates((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // Upload a single part via XHR; returns the ETag from the response header
+  function uploadPart(
+    chunk: Blob,
+    url: string,
+    onProgress: (loaded: number) => void
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) onProgress(e.loaded);
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // ETag is exposed via "ExposeHeaders": ["ETag"] in R2 CORS policy
+          const etag = xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "";
+          resolve(etag);
+        } else {
+          reject(new Error(`Part upload failed (${xhr.status})`));
+        }
+      });
+      xhr.addEventListener("error", () =>
+        reject(new Error("Part upload network error. Check your connection."))
+      );
+      xhr.open("PUT", url);
+      // Do NOT set Content-Type for part uploads — it is not in the signed headers
+      xhr.send(chunk);
+    });
+  }
+
   async function uploadSingle(
     index: number,
   ): Promise<{ name: string; shareUrl: string; token: string } | void> {
     const state = fileStates[index];
     if (!state || state.status === "done") return;
     const file = state.file;
+
+    const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50 MB
+    const CONCURRENCY = 3; // parallel part uploads
 
     const updateState = (patch: Partial<FileUploadState>) =>
       setFileStates((prev) =>
@@ -260,6 +292,89 @@ export default function UploadZone({
     updateState({ status: "uploading", progress: 0 });
 
     try {
+      // ── MULTIPART path (files > 50 MB) ───────────────────────────────────
+      if (file.size > MULTIPART_THRESHOLD) {
+        const initiateRes = await fetch("/api/upload/multipart/initiate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            original_name: file.name,
+            file_size: file.size,
+            mime_type: file.type || "application/octet-stream",
+            expires_in: expiresIn,
+            password: password || undefined,
+            max_downloads: maxDownloads ? parseInt(maxDownloads) : undefined,
+          }),
+        });
+
+        if (!initiateRes.ok) {
+          const err = await initiateRes.json().catch(() => ({}));
+          throw new Error(err.error || `Failed to initiate upload (${initiateRes.status})`);
+        }
+
+        const { token, shareUrl, storageKey, uploadId, chunkSize, partUrls } =
+          await initiateRes.json();
+
+        // Track per-part bytes uploaded for accurate overall progress
+        const partProgress = new Array<number>(partUrls.length).fill(0);
+        const updateProgress = () => {
+          const totalLoaded = partProgress.reduce((a, b) => a + b, 0);
+          updateState({ progress: Math.round((totalLoaded / file.size) * 100) });
+        };
+
+        // Upload parts with limited concurrency
+        const completedParts: Array<{ partNumber: number; etag: string }> = [];
+
+        for (let i = 0; i < partUrls.length; i += CONCURRENCY) {
+          const batch = partUrls.slice(i, i + CONCURRENCY);
+          await Promise.all(
+            batch.map(async ({ partNumber, url }: { partNumber: number; url: string }) => {
+              const start = (partNumber - 1) * chunkSize;
+              const end = Math.min(start + chunkSize, file.size);
+              const chunk = file.slice(start, end);
+
+              const etag = await uploadPart(chunk, url, (loaded) => {
+                partProgress[partNumber - 1] = loaded;
+                updateProgress();
+              });
+
+              completedParts.push({ partNumber, etag });
+            })
+          );
+        }
+
+        // Sort parts by partNumber before completing
+        completedParts.sort((a, b) => a.partNumber - b.partNumber);
+
+        const completeRes = await fetch("/api/upload/multipart/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, storageKey, uploadId, parts: completedParts }),
+        });
+
+        if (!completeRes.ok) {
+          const err = await completeRes.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to complete multipart upload.");
+        }
+
+        if (defaultCollectionId) {
+          await fetch(`/api/collections/${defaultCollectionId}/files`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token, action: "add" }),
+          });
+        }
+
+        updateState({
+          status: "done",
+          progress: 100,
+          result: { token, shareUrl, name: file.name },
+        });
+        onUploadSuccess?.(token, shareUrl);
+        return { name: file.name, shareUrl, token };
+      }
+
+      // ── SINGLE PUT path (files ≤ 50 MB) ──────────────────────────────────
       const presignedRes = await fetch("/api/upload/presigned", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

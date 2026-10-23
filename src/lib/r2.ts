@@ -3,6 +3,10 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -73,6 +77,66 @@ export async function deleteFromR2(key: string) {
     new DeleteObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME!,
       Key: key,
+    })
+  );
+}
+
+// ── Multipart upload helpers ──────────────────────────────────────────────────
+
+export async function createMultipartUpload(
+  key: string,
+  contentType: string
+): Promise<string> {
+  const result = await r2.send(
+    new CreateMultipartUploadCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: key,
+      ContentType: contentType,
+    })
+  );
+  if (!result.UploadId) throw new Error("[R2] Failed to create multipart upload");
+  return result.UploadId;
+}
+
+export async function getPresignedPartUrl(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn = 3600
+): Promise<string> {
+  return getSignedUrl(
+    r2,
+    new UploadPartCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    }),
+    { expiresIn }
+  );
+}
+
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: Array<{ PartNumber: number; ETag: string }>
+) {
+  return r2.send(
+    new CompleteMultipartUploadCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: { Parts: parts },
+    })
+  );
+}
+
+export async function abortMultipartUpload(key: string, uploadId: string) {
+  return r2.send(
+    new AbortMultipartUploadCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: key,
+      UploadId: uploadId,
     })
   );
 }
