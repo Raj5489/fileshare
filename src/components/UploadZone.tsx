@@ -246,10 +246,10 @@ export default function UploadZone({
   }
 
   // Upload a single part via XHR; returns the ETag from the response header
-  function uploadPart(
+  function uploadPartOnce(
     chunk: Blob,
     url: string,
-    onProgress: (loaded: number) => void
+    onProgress: (loaded: number) => void,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -258,20 +258,64 @@ export default function UploadZone({
       });
       xhr.addEventListener("load", () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          // ETag is exposed via "ExposeHeaders": ["ETag"] in R2 CORS policy
-          const etag = xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "";
-          resolve(etag);
+          // ETag must be exposed via "ExposeHeaders": ["ETag"] in your R2 CORS policy
+          const etag =
+            xhr.getResponseHeader("ETag") ||
+            xhr.getResponseHeader("etag") ||
+            "";
+          if (!etag) {
+            reject(
+              new Error(
+                "Part upload succeeded but ETag is missing. Add ETag to R2 bucket CORS ExposeHeaders.",
+              ),
+            );
+          } else {
+            resolve(etag);
+          }
         } else {
-          reject(new Error(`Part upload failed (${xhr.status})`));
+          reject(new Error(`Part upload failed (HTTP ${xhr.status})`));
         }
       });
       xhr.addEventListener("error", () =>
-        reject(new Error("Part upload network error. Check your connection."))
+        reject(new Error("Part upload network error. Check your connection.")),
       );
       xhr.open("PUT", url);
       // Do NOT set Content-Type for part uploads — it is not in the signed headers
       xhr.send(chunk);
     });
+  }
+
+  // Retry wrapper — retries up to MAX_RETRIES times with exponential back-off
+  async function uploadPart(
+    chunk: Blob,
+    url: string,
+    onProgress: (loaded: number) => void,
+    partNumber: number,
+  ): Promise<string> {
+    const MAX_RETRIES = 3;
+    let lastError: Error = new Error("Unknown error");
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Reset progress reporter on retries so the bar doesn't jump
+        const etag = await uploadPartOnce(chunk, url, onProgress);
+        return etag;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < MAX_RETRIES) {
+          // Exponential back-off: 2s, 4s
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          onProgress(0); // reset this part's progress before retry
+          console.warn(
+            `[UploadZone] Part ${partNumber} attempt ${attempt} failed, retrying… (${lastError.message})`,
+          );
+        }
+      }
+    }
+
+    throw new Error(
+      `Part ${partNumber} failed after ${MAX_RETRIES} attempts: ${lastError.message}`,
+    );
   }
 
   async function uploadSingle(
@@ -282,7 +326,7 @@ export default function UploadZone({
     const file = state.file;
 
     const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50 MB
-    const CONCURRENCY = 3; // parallel part uploads
+    const CONCURRENCY = 4; // parallel part uploads
 
     const updateState = (patch: Partial<FileUploadState>) =>
       setFileStates((prev) =>
@@ -309,7 +353,9 @@ export default function UploadZone({
 
         if (!initiateRes.ok) {
           const err = await initiateRes.json().catch(() => ({}));
-          throw new Error(err.error || `Failed to initiate upload (${initiateRes.status})`);
+          throw new Error(
+            err.error || `Failed to initiate upload (${initiateRes.status})`,
+          );
         }
 
         const { token, shareUrl, storageKey, uploadId, chunkSize, partUrls } =
@@ -319,28 +365,53 @@ export default function UploadZone({
         const partProgress = new Array<number>(partUrls.length).fill(0);
         const updateProgress = () => {
           const totalLoaded = partProgress.reduce((a, b) => a + b, 0);
-          updateState({ progress: Math.round((totalLoaded / file.size) * 100) });
+          updateState({
+            progress: Math.round((totalLoaded / file.size) * 100),
+          });
         };
 
-        // Upload parts with limited concurrency
+        // Upload parts with limited concurrency + per-part retry
         const completedParts: Array<{ partNumber: number; etag: string }> = [];
 
-        for (let i = 0; i < partUrls.length; i += CONCURRENCY) {
-          const batch = partUrls.slice(i, i + CONCURRENCY);
-          await Promise.all(
-            batch.map(async ({ partNumber, url }: { partNumber: number; url: string }) => {
-              const start = (partNumber - 1) * chunkSize;
-              const end = Math.min(start + chunkSize, file.size);
-              const chunk = file.slice(start, end);
+        try {
+          for (let i = 0; i < partUrls.length; i += CONCURRENCY) {
+            const batch = partUrls.slice(i, i + CONCURRENCY);
+            await Promise.all(
+              batch.map(
+                async ({
+                  partNumber,
+                  url,
+                }: {
+                  partNumber: number;
+                  url: string;
+                }) => {
+                  const start = (partNumber - 1) * chunkSize;
+                  const end = Math.min(start + chunkSize, file.size);
+                  const chunk = file.slice(start, end);
 
-              const etag = await uploadPart(chunk, url, (loaded) => {
-                partProgress[partNumber - 1] = loaded;
-                updateProgress();
-              });
+                  const etag = await uploadPart(
+                    chunk,
+                    url,
+                    (loaded) => {
+                      partProgress[partNumber - 1] = loaded;
+                      updateProgress();
+                    },
+                    partNumber,
+                  );
 
-              completedParts.push({ partNumber, etag });
-            })
-          );
+                  completedParts.push({ partNumber, etag });
+                },
+              ),
+            );
+          }
+        } catch (partErr) {
+          // Abort the dangling multipart session in R2 to avoid wasting storage
+          fetch("/api/upload/multipart/abort", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storageKey, uploadId }),
+          }).catch(() => {});
+          throw partErr;
         }
 
         // Sort parts by partNumber before completing
@@ -349,7 +420,12 @@ export default function UploadZone({
         const completeRes = await fetch("/api/upload/multipart/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, storageKey, uploadId, parts: completedParts }),
+          body: JSON.stringify({
+            token,
+            storageKey,
+            uploadId,
+            parts: completedParts,
+          }),
         });
 
         if (!completeRes.ok) {
@@ -390,10 +466,13 @@ export default function UploadZone({
 
       if (!presignedRes.ok) {
         const err = await presignedRes.json().catch(() => ({}));
-        throw new Error(err.error || `Failed to get upload URL (${presignedRes.status})`);
+        throw new Error(
+          err.error || `Failed to get upload URL (${presignedRes.status})`,
+        );
       }
 
-      const { token, presignedUrl, shareUrl, mimeType } = await presignedRes.json();
+      const { token, presignedUrl, shareUrl, mimeType } =
+        await presignedRes.json();
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -404,10 +483,18 @@ export default function UploadZone({
         xhr.addEventListener("load", () =>
           xhr.status >= 200 && xhr.status < 300
             ? resolve()
-            : reject(new Error(`Storage upload failed (${xhr.status}). Check R2 CORS settings.`)),
+            : reject(
+                new Error(
+                  `Storage upload failed (${xhr.status}). Check R2 CORS settings.`,
+                ),
+              ),
         );
         xhr.addEventListener("error", () =>
-          reject(new Error("Storage upload network error. Ensure Cloudflare R2 CORS allows this domain.")),
+          reject(
+            new Error(
+              "Storage upload network error. Ensure Cloudflare R2 CORS allows this domain.",
+            ),
+          ),
         );
         xhr.open("PUT", presignedUrl);
         xhr.setRequestHeader(

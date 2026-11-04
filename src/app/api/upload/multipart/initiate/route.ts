@@ -3,10 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import {
-  createMultipartUpload,
-  getPresignedPartUrl,
-} from "@/lib/r2";
+import { createMultipartUpload, getPresignedPartUrl } from "@/lib/r2";
 import { guestUploadLimit, authUploadLimit, apiLimit } from "@/lib/rate-limit";
 import {
   generateShareToken,
@@ -38,7 +35,10 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     const { success: apiOk } = await apiLimit.limit(ip);
     if (!apiOk) {
-      return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+      return NextResponse.json(
+        { error: "Too many requests." },
+        { status: 429 },
+      );
     }
 
     const supabase = await createServerSupabaseClient();
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     if (!uploadOk) {
       return NextResponse.json(
         { error: "Upload limit reached. Try again later." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid request.", details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,7 +82,10 @@ export async function POST(req: NextRequest) {
     }
 
     let effectiveExpiresIn = expires_in || "24h";
-    if (!user && (effectiveExpiresIn === "never" || effectiveExpiresIn === "30d")) {
+    if (
+      !user &&
+      (effectiveExpiresIn === "never" || effectiveExpiresIn === "30d")
+    ) {
       effectiveExpiresIn = "7d";
     }
     const expires_at = parseExpiry(effectiveExpiresIn);
@@ -116,7 +119,10 @@ export async function POST(req: NextRequest) {
         expires_at: expires_at?.toISOString() || null,
       });
 
-      if (!error) { dbError = null; break; }
+      if (!error) {
+        dbError = null;
+        break;
+      }
       dbError = error;
       const isUniqueError =
         error.code === "23505" ||
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest) {
       console.error("[Upload/Multipart/Initiate] DB error:", dbError);
       return NextResponse.json(
         { error: `Failed to create file record: ${dbError.message}` },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -140,11 +146,13 @@ export async function POST(req: NextRequest) {
     const numParts = Math.ceil(file_size / MULTIPART_CHUNK_SIZE);
     const partUrls = await Promise.all(
       Array.from({ length: numParts }, (_, i) =>
-        getPresignedPartUrl(storage_key, uploadId, i + 1, 3600).then((url) => ({
-          partNumber: i + 1,
-          url,
-        }))
-      )
+        getPresignedPartUrl(storage_key, uploadId, i + 1, 4 * 3600).then(
+          (url) => ({
+            partNumber: i + 1,
+            url,
+          }),
+        ),
+      ),
     );
 
     const appUrl = (
@@ -152,7 +160,7 @@ export async function POST(req: NextRequest) {
     ).replace(/\/$/, "");
 
     console.log(
-      `[Upload/Multipart/Initiate] token=${share_token} parts=${numParts} uploadId=${uploadId}`
+      `[Upload/Multipart/Initiate] token=${share_token} parts=${numParts} uploadId=${uploadId}`,
     );
 
     return NextResponse.json({
@@ -168,7 +176,7 @@ export async function POST(req: NextRequest) {
     console.error("[Upload/Multipart/Initiate] Error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal server error." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
