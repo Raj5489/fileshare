@@ -1,19 +1,13 @@
-import { redirect } from "next/navigation";
-import { createServerSupabaseClient } from "@/lib/supabase-server";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { UploadCloud, Globe, Shield, Clock, Zap, Lock } from "lucide-react";
 import HomeUploadZone from "@/components/HomeUploadZone";
+import HomeRedirect from "@/components/HomeRedirect";
+import { UploadCloud, Globe, Shield, Clock, Zap, Lock } from "lucide-react";
 
-export default async function Home() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
-
+export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
+      <HomeRedirect />
       <Navbar />
 
       {/* ── Hero ── */}
