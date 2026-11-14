@@ -189,7 +189,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-border/60 bg-card/75 backdrop-blur-xl px-6 py-3 shadow-sm shadow-black/5">
+    <nav className="sticky top-0 z-50 border-b border-border/60 bg-card/75 backdrop-blur-xl px-4 sm:px-6 py-3 shadow-sm shadow-black/5">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
         <Link
           href={user ? "/dashboard" : "/"}
@@ -204,9 +204,9 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
             <DialogTrigger>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-2 px-2.5 sm:px-3">
                 <Download className="h-4 w-4" />
-                Receive File
+                <span className="hidden sm:inline">Receive File</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -254,11 +254,11 @@ export default function Navbar() {
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger>
-                  <Button variant="ghost" size="sm" className="gap-2">
+                  <Button variant="ghost" size="sm" className="gap-2 px-2 sm:px-3">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
                       <User className="h-3.5 w-3.5 text-primary" />
                     </div>
-                    <span className="max-w-[120px] truncate">
+                    <span className="hidden sm:inline max-w-[120px] truncate">
                       {user.email?.split("@")[0] || "Account"}
                     </span>
                   </Button>
@@ -274,7 +274,10 @@ export default function Navbar() {
           ) : (
             <Dialog open={authOpen} onOpenChange={setAuthOpen}>
               <DialogTrigger>
-                <Button size="sm">Login / Sign Up</Button>
+                <Button size="sm">
+                  <span className="sm:hidden">Login</span>
+                  <span className="hidden sm:inline">Login / Sign Up</span>
+                </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
