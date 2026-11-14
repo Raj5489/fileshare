@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import JSZip from "jszip";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,17 @@ interface FileUploadState {
   error?: string;
   result?: UploadResult;
   isFolder?: boolean;
+}
+
+interface MultipartSession {
+  token: string;
+  shareUrl: string;
+  storageKey: string;
+  uploadId: string;
+  chunkSize: number;
+  totalParts: number;
+  partUrls: string[];
+  completed: Record<number, string>; // partNumber -> ETag
 }
 
 interface UploadZoneProps {
@@ -135,6 +146,10 @@ export default function UploadZone({
   const [expiresIn, setExpiresIn] = useState("24h");
   const [password, setPassword] = useState("");
   const [maxDownloads, setMaxDownloads] = useState("");
+
+  // Multipart sessions keyed by file index — enables resuming a partial upload
+  // when a file fails and is retried (instead of restarting from zero).
+  const mpSessionsRef = useRef<Record<number, MultipartSession>>({});
 
   // Regular file drop (react-dropzone handles files only)
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -273,7 +288,9 @@ export default function UploadZone({
             resolve(etag);
           }
         } else {
-          reject(new Error(`Part upload failed (HTTP ${xhr.status})`));
+          const err = new Error(`Part upload failed (HTTP ${xhr.status})`);
+          (err as unknown as { status?: number }).status = xhr.status;
+          reject(err);
         }
       });
       xhr.addEventListener("error", () =>
@@ -292,7 +309,7 @@ export default function UploadZone({
     onProgress: (loaded: number) => void,
     partNumber: number,
   ): Promise<string> {
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 4;
     let lastError: Error = new Error("Unknown error");
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -302,9 +319,25 @@ export default function UploadZone({
         return etag;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+
+        const status = (lastError as { status?: number }).status;
+        // Don't retry permanent client errors (except 408 Request Timeout and
+        // 429 Too Many Requests, which may succeed after backing off).
+        if (
+          typeof status === "number" &&
+          status >= 400 &&
+          status < 500 &&
+          status !== 408 &&
+          status !== 429
+        ) {
+          break;
+        }
+
         if (attempt < MAX_RETRIES) {
-          // Exponential back-off: 2s, 4s
-          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          // Exponential back-off with jitter: ~1s, 2s, 4s, 8s
+          const jitter = Math.round(Math.random() * 500);
+          const delay = 1000 * Math.pow(2, attempt - 1) + jitter;
+          await new Promise((r) => setTimeout(r, delay));
           onProgress(0); // reset this part's progress before retry
           console.warn(
             `[UploadZone] Part ${partNumber} attempt ${attempt} failed, retrying… (${lastError.message})`,
@@ -326,7 +359,7 @@ export default function UploadZone({
     const file = state.file;
 
     const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50 MB
-    const CONCURRENCY = 4; // parallel part uploads
+    const CONCURRENCY = 8; // parallel part uploads
 
     const updateState = (patch: Partial<FileUploadState>) =>
       setFileStates((prev) =>
@@ -338,31 +371,58 @@ export default function UploadZone({
     try {
       // ── MULTIPART path (files > 50 MB) ───────────────────────────────────
       if (file.size > MULTIPART_THRESHOLD) {
-        const initiateRes = await fetch("/api/upload/multipart/initiate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            original_name: file.name,
-            file_size: file.size,
-            mime_type: file.type || "application/octet-stream",
-            expires_in: expiresIn,
-            password: password || undefined,
-            max_downloads: maxDownloads ? parseInt(maxDownloads) : undefined,
-          }),
-        });
+        let session = mpSessionsRef.current[index];
 
-        if (!initiateRes.ok) {
-          const err = await initiateRes.json().catch(() => ({}));
-          throw new Error(
-            err.error || `Failed to initiate upload (${initiateRes.status})`,
-          );
+        // Reuse a stored session when retrying a failed upload so we can resume
+        // from the last completed part instead of restarting from zero.
+        if (
+          !session ||
+          session.chunkSize <= 0 ||
+          Math.ceil(file.size / session.chunkSize) !== session.totalParts
+        ) {
+          const initiateRes = await fetch("/api/upload/multipart/initiate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              original_name: file.name,
+              file_size: file.size,
+              mime_type: file.type || "application/octet-stream",
+              expires_in: expiresIn,
+              password: password || undefined,
+              max_downloads: maxDownloads ? parseInt(maxDownloads) : undefined,
+            }),
+          });
+
+          if (!initiateRes.ok) {
+            const err = await initiateRes.json().catch(() => ({}));
+            throw new Error(
+              err.error || `Failed to initiate upload (${initiateRes.status})`,
+            );
+          }
+
+          const data = await initiateRes.json();
+
+          session = {
+            token: data.token,
+            shareUrl: data.shareUrl,
+            storageKey: data.storageKey,
+            uploadId: data.uploadId,
+            chunkSize: data.chunkSize,
+            totalParts: data.partUrls.length,
+            partUrls: data.partUrls,
+            completed: {},
+          };
+          mpSessionsRef.current[index] = session;
         }
 
-        const { token, shareUrl, storageKey, uploadId, chunkSize, partUrls } =
-          await initiateRes.json();
+        if (!session) {
+          throw new Error("Failed to initialize multipart upload session.");
+        }
+        const active = session;
+        const { token, shareUrl, storageKey, uploadId, chunkSize } = active;
 
         // Track per-part bytes uploaded for accurate overall progress
-        const partProgress = new Array<number>(partUrls.length).fill(0);
+        const partProgress = new Array<number>(active.totalParts).fill(0);
         const updateProgress = () => {
           const totalLoaded = partProgress.reduce((a, b) => a + b, 0);
           updateState({
@@ -370,47 +430,48 @@ export default function UploadZone({
           });
         };
 
-        // Upload parts with limited concurrency + per-part retry
+        // Completed parts we already have from a previous attempt (resume).
         const completedParts: Array<{ partNumber: number; etag: string }> = [];
+        const remainingParts: number[] = [];
+        for (let p = 1; p <= active.totalParts; p++) {
+          const etag = active.completed[p];
+          if (etag) {
+            partProgress[p - 1] = chunkSize;
+            completedParts.push({ partNumber: p, etag });
+          } else {
+            remainingParts.push(p);
+          }
+        }
+        updateProgress();
 
         try {
-          for (let i = 0; i < partUrls.length; i += CONCURRENCY) {
-            const batch = partUrls.slice(i, i + CONCURRENCY);
+          // Upload remaining parts with limited concurrency + per-part retry.
+          for (let i = 0; i < remainingParts.length; i += CONCURRENCY) {
+            const batch = remainingParts.slice(i, i + CONCURRENCY);
             await Promise.all(
-              batch.map(
-                async ({
+              batch.map(async (partNumber) => {
+                const start = (partNumber - 1) * chunkSize;
+                const end = Math.min(start + chunkSize, file.size);
+                const chunk = file.slice(start, end);
+
+                const etag = await uploadPart(
+                  chunk,
+                  active.partUrls[partNumber - 1],
+                  (loaded) => {
+                    partProgress[partNumber - 1] = loaded;
+                    updateProgress();
+                  },
                   partNumber,
-                  url,
-                }: {
-                  partNumber: number;
-                  url: string;
-                }) => {
-                  const start = (partNumber - 1) * chunkSize;
-                  const end = Math.min(start + chunkSize, file.size);
-                  const chunk = file.slice(start, end);
+                );
 
-                  const etag = await uploadPart(
-                    chunk,
-                    url,
-                    (loaded) => {
-                      partProgress[partNumber - 1] = loaded;
-                      updateProgress();
-                    },
-                    partNumber,
-                  );
-
-                  completedParts.push({ partNumber, etag });
-                },
-              ),
+                active.completed[partNumber] = etag;
+                completedParts.push({ partNumber, etag });
+              }),
             );
           }
         } catch (partErr) {
-          // Abort the dangling multipart session in R2 to avoid wasting storage
-          fetch("/api/upload/multipart/abort", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ storageKey, uploadId }),
-          }).catch(() => {});
+          // Keep the session (with completed parts) so a retry can resume instead
+          // of restarting. The R2 cleanup job eventually removes orphaned sessions.
           throw partErr;
         }
 
@@ -432,6 +493,9 @@ export default function UploadZone({
           const err = await completeRes.json().catch(() => ({}));
           throw new Error(err.error || "Failed to complete multipart upload.");
         }
+
+        // Upload finished — drop the stored session.
+        delete mpSessionsRef.current[index];
 
         if (defaultCollectionId) {
           await fetch(`/api/collections/${defaultCollectionId}/files`, {
@@ -691,10 +755,18 @@ export default function UploadZone({
     setPassword("");
     setMaxDownloads("");
     setExpiresIn("24h");
+
+    // Best-effort abort any dangling multipart sessions to free R2 storage.
+    for (const s of Object.values(mpSessionsRef.current)) {
+      fetch("/api/upload/multipart/abort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageKey: s.storageKey, uploadId: s.uploadId }),
+      }).catch(() => {});
+    }
+    mpSessionsRef.current = {};
   }
 
-  const allDone =
-    fileStates.length > 0 && fileStates.every((s) => s.status === "done");
   const hasPending = fileStates.some(
     (s) => s.status === "pending" || s.status === "error",
   );

@@ -48,7 +48,7 @@ export async function getPresignedUploadUrl(
 export async function getSignedDownloadUrl(
   key: string,
   filenameOrExpiresIn?: string | number,
-  expiresIn = 900
+  expiresIn = 3600
 ) {
   let filename: string | undefined;
   let actualExpiresIn = expiresIn;
@@ -140,3 +140,52 @@ export async function abortMultipartUpload(key: string, uploadId: string) {
     })
   );
 }
+
+// ── Object inspection helpers (security / magic-byte checks) ────────────────
+
+/** Read the first `length` bytes of an object as a Uint8Array (best-effort). */
+export async function readObjectRange(
+  key: string,
+  length: number
+): Promise<Uint8Array | null> {
+  try {
+    const res = await r2.send(
+      new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: key,
+        Range: `bytes=0-${length - 1}`,
+      })
+    );
+    const body = res.Body as ReadableStream<Uint8Array> | undefined;
+    if (!body) return null;
+    const reader = body.getReader();
+    const { value, done } = await reader.read();
+    return done || !value ? null : value.slice(0, length);
+  } catch {
+    return null;
+  }
+}
+
+const EXECUTABLE_MAGIC: Array<{ bytes: number[]; label: string }> = [
+  { bytes: [0x4d, 0x5a], label: "Windows PE executable (MZ)" },
+  { bytes: [0x7f, 0x45, 0x4c, 0x46], label: "ELF executable" },
+  { bytes: [0xcf, 0xfa, 0xed, 0xfe], label: "Mach-O executable" },
+];
+
+/** True if the leading bytes match a known executable format. */
+export function isExecutableMagic(head: Uint8Array): boolean {
+  for (const { bytes } of EXECUTABLE_MAGIC) {
+    if (head.length >= bytes.length) {
+      let matches = true;
+      for (let i = 0; i < bytes.length; i++) {
+        if (head[i] !== bytes[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return true;
+    }
+  }
+  return false;
+}
+

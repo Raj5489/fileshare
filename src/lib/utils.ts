@@ -30,6 +30,10 @@ export function sanitizeFileName(name: string) {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB
 
+// Storage quotas (server-only enforcement)
+export const USER_STORAGE_QUOTA = 50 * 1024 * 1024 * 1024; // 50 GB
+export const GUEST_STORAGE_QUOTA = 5 * 1024 * 1024 * 1024; // 5 GB
+
 // All allowed MIME types — 10 GB limit each
 const ALLOWED_TYPES: Record<string, number> = {
   // Images

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createMultipartUpload, getPresignedPartUrl } from "@/lib/r2";
-import { guestUploadLimit, authUploadLimit, apiLimit } from "@/lib/rate-limit";
+import { guestUploadLimit, authUploadLimit, apiLimit, checkGuestStorageQuota } from "@/lib/rate-limit";
 import {
   generateShareToken,
   generateStorageKey,
@@ -12,6 +12,7 @@ import {
   validateFileType,
   parseExpiry,
   getClientIp,
+  USER_STORAGE_QUOTA,
 } from "@/lib/utils";
 
 // 50 MB per chunk — small enough to survive flaky connections, well above 5 MB minimum
@@ -97,6 +98,36 @@ export async function POST(req: NextRequest) {
 
     // Insert DB record (same retry logic as presigned route)
     const admin = getSupabaseAdmin();
+
+    // Enforce storage quota (users: DB total; guests: Redis/IP daily cap)
+    if (user) {
+      const { data: activeFiles, error: quotaErr } = await admin
+        .from("files")
+        .select("file_size")
+        .eq("user_id", user.id)
+        .eq("is_deleted", false);
+      if (!quotaErr) {
+        const usedBytes = (activeFiles ?? []).reduce(
+          (sum: number, f: { file_size: number }) => sum + (f.file_size || 0),
+          0,
+        );
+        if (usedBytes + file_size > USER_STORAGE_QUOTA) {
+          return NextResponse.json(
+            { error: "Storage quota exceeded. Delete some files or upgrade." },
+            { status: 413 },
+          );
+        }
+      }
+    } else {
+      const guestQuota = await checkGuestStorageQuota(file_size, ip);
+      if (!guestQuota.success) {
+        return NextResponse.json(
+          { error: "Guest storage quota exceeded for today." },
+          { status: 413 },
+        );
+      }
+    }
+
     let share_token = generateShareToken();
     let storage_key = generateStorageKey(original_name);
     let dbError = null;

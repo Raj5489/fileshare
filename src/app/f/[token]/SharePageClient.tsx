@@ -6,12 +6,7 @@ import { toast } from "sonner";
 import { Download, Loader2, Eye, Calendar, Shield } from "lucide-react";
 import FilePreview from "@/components/FilePreview";
 import PasswordGate from "@/components/PasswordGate";
-import {
-  formatDate,
-  formatBytes,
-  getFileIcon,
-  getFileCategory,
-} from "@/lib/utils";
+import { formatDate, getFileIcon, getFileCategory } from "@/lib/utils";
 
 interface Metadata {
   token: string;

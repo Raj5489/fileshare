@@ -119,11 +119,22 @@ export async function POST(
       return NextResponse.json({ success: true });
     }
 
-    // Generate signed download URL (15 minutes)
+    // Generate a signed download URL whose lifetime scales with file size so
+    // large files don't expire mid-transfer. Base 15 min, +1 min per 20 MB,
+    // capped at 24 h (86400 s).
+    const MAX_DOWNLOAD_EXPIRY = 86400;
+    const baseExpiry = 900;
+    const sizeBasedExpiry =
+      Math.ceil(file.file_size / (20 * 1024 * 1024)) * 60;
+    const downloadExpiry = Math.min(
+      MAX_DOWNLOAD_EXPIRY,
+      Math.max(baseExpiry, sizeBasedExpiry),
+    );
+
     const download_url = await getSignedDownloadUrl(
       file.storage_key,
       file.original_name,
-      900,
+      downloadExpiry,
     );
 
     // Increment download count atomically using DB-level increment

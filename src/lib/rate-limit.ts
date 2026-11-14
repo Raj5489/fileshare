@@ -42,8 +42,45 @@ function makeLimiter(
   };
 }
 
-export const guestUploadLimit = makeLimiter("guest_upload", 50, "1 h");
-export const authUploadLimit = makeLimiter("auth_upload", 50, "1 h");
-export const downloadLimit = makeLimiter("download", 100, "1 h");
-export const apiLimit = makeLimiter("api", 200, "1 m");
+// Upload limits: count per-user DAILY quotas instead of per-file requests so
+// batch uploads of many files don't exhaust the budget and fail mid-way.
+export const guestUploadLimit = makeLimiter("guest_upload", 200, "24 h");
+export const authUploadLimit = makeLimiter("auth_upload", 1000, "24 h");
+export const downloadLimit = makeLimiter("download", 500, "1 h");
+export const apiLimit = makeLimiter("api", 600, "1 m");
 export const passwordAttemptLimit = makeLimiter("password_attempt", 5, "15 m");
+
+// ── Guest storage quota (Redis/IP-based) ────────────────────────────────
+
+const GUEST_STORAGE_QUOTA = 5 * 1024 * 1024 * 1024; // 5 GB / IP / day
+const GUEST_BYTES_PREFIX = "ratelimit:guest_bytes";
+
+/**
+ * Tracks how many bytes a guest IP has uploaded today and rejects uploads that
+ * would exceed the daily quota. Fails open when Redis is unavailable.
+ */
+export async function checkGuestStorageQuota(
+  bytes: number,
+  ip: string
+): Promise<{ success: boolean }> {
+  if (!redis) return { success: true };
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${GUEST_BYTES_PREFIX}:${day}:${ip}`;
+  try {
+    const used = await redis.get<number>(key);
+    const current = typeof used === "number" ? used : 0;
+    if (current + bytes > GUEST_STORAGE_QUOTA) {
+      return { success: false };
+    }
+    const firstWrite = current === 0;
+    await redis.incrby(key, Math.round(bytes));
+    if (firstWrite) {
+      // Let the key expire well past the day window (48h).
+      await redis.expire(key, 60 * 60 * 48);
+    }
+    return { success: true };
+  } catch {
+    return { success: true };
+  }
+}
+
