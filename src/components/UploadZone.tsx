@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
+import { getSupabaseBrowser } from "@/lib/supabase";
 import ShareCard from "./ShareCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -681,10 +682,18 @@ export default function UploadZone({
           month: "short",
         });
 
-        // Try authenticated flow first
-        const listRes = await fetch("/api/collections");
+        // Resolve auth state client-side first so guests never hit the
+        // protected /api/collections endpoint (avoids a wasted, slow 401
+        // round-trip and keeps the DevTools network log clean).
+        const { data: sessionData } =
+          await getSupabaseBrowser().auth.getSession();
+        const isAuthenticated = Boolean(sessionData.session?.user);
 
-        if (listRes.ok) {
+        const listRes = isAuthenticated
+          ? await fetch("/api/collections")
+          : null;
+
+        if (listRes?.ok) {
           // Logged-in user
           const { collections: existingCols } = await listRes.json();
 
