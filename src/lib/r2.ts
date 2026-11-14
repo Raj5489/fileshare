@@ -45,10 +45,28 @@ export async function getPresignedUploadUrl(
   );
 }
 
+/**
+ * Build a Content-Disposition header value from a filename and a disposition.
+ *
+ * - "attachment" (default) forces the browser to download the file.
+ * - "inline" allows the browser to render it in-page (images, PDFs, video,
+ *   audio), which is required for previews to display.
+ */
+export function buildContentDisposition(
+  filename: string,
+  disposition: "attachment" | "inline" = "attachment",
+): string {
+  const safeFilename = filename
+    .replace(/[^ \x20-\x7e]/g, "_")
+    .replace(/"/g, '\\"');
+  return `${disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
 export async function getSignedDownloadUrl(
   key: string,
   filenameOrExpiresIn?: string | number,
-  expiresIn = 3600
+  expiresIn = 3600,
+  disposition: "attachment" | "inline" = "attachment"
 ) {
   let filename: string | undefined;
   let actualExpiresIn = expiresIn;
@@ -65,7 +83,7 @@ export async function getSignedDownloadUrl(
       Bucket: process.env.R2_BUCKET_NAME!,
       Key: key,
       ResponseContentDisposition: filename
-        ? `attachment; filename="${filename.replace(/[^ \x20-\x7e]/g, "_").replace(/"/g, '\\"')}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+        ? buildContentDisposition(filename, disposition)
         : undefined,
     }),
     { expiresIn: actualExpiresIn }

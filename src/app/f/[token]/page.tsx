@@ -61,6 +61,7 @@ async function getFileMetadata(token: string) {
           file.storage_key,
           file.original_name,
           3600,
+          "inline",
         );
       } catch (previewErr) {
         console.error("[SharePage] Preview URL error:", previewErr);

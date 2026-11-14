@@ -51,6 +51,7 @@ export async function GET(
         file.storage_key,
         file.original_name,
         3600,
+        "inline",
       );
     }
 
