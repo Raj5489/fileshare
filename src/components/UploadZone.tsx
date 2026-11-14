@@ -268,6 +268,14 @@ export default function UploadZone({
     onProgress: (loaded: number) => void,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
+      // Defensive guard: never issue a malformed request (e.g. from a stale
+      // multipart session or a server regression). An object coerced to a
+      // string becomes "[object Object]" — exactly the broken URL seen in the
+      // network log for large multipart uploads.
+      if (typeof url !== "string" || !url) {
+        reject(new Error("Invalid part upload URL."));
+        return;
+      }
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) onProgress(e.loaded);

@@ -173,16 +173,12 @@ export async function POST(req: NextRequest) {
     // Create R2 multipart upload session
     const uploadId = await createMultipartUpload(storage_key, mime_type);
 
-    // Generate presigned URL for every part (1-indexed)
+    // Generate presigned URL for every part (1-indexed). Returned as a flat
+    // array of URL strings — the client expects `partUrls: string[]`.
     const numParts = Math.ceil(file_size / MULTIPART_CHUNK_SIZE);
     const partUrls = await Promise.all(
       Array.from({ length: numParts }, (_, i) =>
-        getPresignedPartUrl(storage_key, uploadId, i + 1, 4 * 3600).then(
-          (url) => ({
-            partNumber: i + 1,
-            url,
-          }),
-        ),
+        getPresignedPartUrl(storage_key, uploadId, i + 1, 4 * 3600),
       ),
     );
 
