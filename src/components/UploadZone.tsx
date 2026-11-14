@@ -124,6 +124,79 @@ async function zipEntries(
   return new File([blob], `${folderName}.zip`, { type: "application/zip" });
 }
 
+// ─── Multipart session persistence (resume across reloads) ────────────────────
+
+const MP_STORAGE_PREFIX = "fileshare_mp_session_";
+
+/** Stable per-file key for persisted multipart sessions. */
+function mpStorageKey(file: File): string {
+  return `${MP_STORAGE_PREFIX}${file.name}|${file.size}|${file.lastModified}`;
+}
+
+/** Load a previously-saved multipart session for this file, if still valid. */
+function loadPersistedSession(file: File): MultipartSession | null {
+  try {
+    const raw = window.localStorage.getItem(mpStorageKey(file));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      savedAt?: number;
+      session?: Partial<MultipartSession> | null;
+    } | null;
+    if (!parsed || typeof parsed.savedAt !== "number") return null;
+    // Presigned part URLs expire after ~4h — treat anything older as stale so we
+    // re-initiate a fresh session instead of retrying expired URLs.
+    if (Date.now() - parsed.savedAt > 3 * 60 * 60 * 1000) return null;
+    const s = parsed.session;
+    if (!s || typeof s !== "object") return null;
+    if (!s.token || !s.storageKey || !s.uploadId) return null;
+    if (typeof s.chunkSize !== "number" || s.chunkSize <= 0) return null;
+    if (!Array.isArray(s.partUrls)) return null;
+    const totalParts = Math.ceil(file.size / s.chunkSize);
+    if (totalParts !== s.totalParts || s.partUrls.length !== totalParts) {
+      return null;
+    }
+    if (!s.completed || typeof s.completed !== "object") return null;
+    return s as MultipartSession;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist a multipart session so a reload/resume can continue it. */
+function persistSession(file: File, session: MultipartSession): void {
+  try {
+    window.localStorage.setItem(
+      mpStorageKey(file),
+      JSON.stringify({ savedAt: Date.now(), session }),
+    );
+  } catch {
+    // Ignore storage quota / security errors — resume is best-effort.
+  }
+}
+
+/** Remove a persisted session (on success or when explicitly reset). */
+function clearPersistedSession(file: File): void {
+  try {
+    window.localStorage.removeItem(mpStorageKey(file));
+  } catch {
+    // ignore
+  }
+}
+
+/** Clear all persisted multipart sessions (used by reset). */
+function clearAllPersistedSessions(): void {
+  try {
+    const remove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(MP_STORAGE_PREFIX)) remove.push(key);
+    }
+    remove.forEach((k) => window.localStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function UploadZone({
@@ -261,7 +334,9 @@ export default function UploadZone({
     setFileStates((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Upload a single part via XHR; returns the ETag from the response header
+  // Upload a single part via XHR; returns the ETag from the response header.
+  // Adds a stall watchdog so a hung connection fails fast (and can be retried)
+  // instead of hanging forever. Includes a defensive guard against malformed URLs.
   function uploadPartOnce(
     chunk: Blob,
     url: string,
@@ -276,11 +351,33 @@ export default function UploadZone({
         reject(new Error("Invalid part upload URL."));
         return;
       }
+
       const xhr = new XMLHttpRequest();
+
+      // If a part stalls with no progress (connection drops, preflight hangs),
+      // abort it so the retry layer can pick it up instead of waiting forever.
+      const STALL_TIMEOUT_MS = 60 * 1000;
+      let lastActivity = Date.now();
+      const markActivity = () => {
+        lastActivity = Date.now();
+      };
+      const watchdog = window.setInterval(() => {
+        if (Date.now() - lastActivity > STALL_TIMEOUT_MS) {
+          window.clearInterval(watchdog);
+          xhr.abort();
+          reject(new Error("Part upload stalled (no progress for 60s)."));
+        }
+      }, 5000);
+      const clearWatchdog = () => window.clearInterval(watchdog);
+
       xhr.upload.addEventListener("progress", (e) => {
+        markActivity();
         if (e.lengthComputable) onProgress(e.loaded);
       });
+      xhr.addEventListener("loadstart", markActivity);
+
       xhr.addEventListener("load", () => {
+        clearWatchdog();
         if (xhr.status >= 200 && xhr.status < 300) {
           // ETag must be exposed via "ExposeHeaders": ["ETag"] in your R2 CORS policy
           const etag =
@@ -302,23 +399,31 @@ export default function UploadZone({
           reject(err);
         }
       });
-      xhr.addEventListener("error", () =>
-        reject(new Error("Part upload network error. Check your connection.")),
-      );
+
+      xhr.addEventListener("error", () => {
+        clearWatchdog();
+        reject(new Error("Part upload network error. Check your connection."));
+      });
+      xhr.addEventListener("abort", () => {
+        clearWatchdog();
+        reject(new Error("Part upload aborted."));
+      });
+
       xhr.open("PUT", url);
       // Do NOT set Content-Type for part uploads — it is not in the signed headers
       xhr.send(chunk);
     });
   }
 
-  // Retry wrapper — retries up to MAX_RETRIES times with exponential back-off
+  // Retry wrapper — retries transient (network/timeout/5xx/408/429) failures with
+  // exponential backoff + jitter. Permanent 4xx errors surface immediately.
   async function uploadPart(
     chunk: Blob,
     url: string,
     onProgress: (loaded: number) => void,
     partNumber: number,
   ): Promise<string> {
-    const MAX_RETRIES = 4;
+    const MAX_RETRIES = 6;
     let lastError: Error = new Error("Unknown error");
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -343,9 +448,9 @@ export default function UploadZone({
         }
 
         if (attempt < MAX_RETRIES) {
-          // Exponential back-off with jitter: ~1s, 2s, 4s, 8s
-          const jitter = Math.round(Math.random() * 500);
-          const delay = 1000 * Math.pow(2, attempt - 1) + jitter;
+          // Exponential back-off with jitter, capped ~26s: ~2s, 4s, 8s, 16s, 25s
+          const base = Math.min(2000 * Math.pow(2, attempt - 1), 25000);
+          const delay = base + Math.round(Math.random() * 1000);
           await new Promise((r) => setTimeout(r, delay));
           onProgress(0); // reset this part's progress before retry
           console.warn(
@@ -355,9 +460,12 @@ export default function UploadZone({
       }
     }
 
-    throw new Error(
+    const err = new Error(
       `Part ${partNumber} failed after ${MAX_RETRIES} attempts: ${lastError.message}`,
     );
+    (err as { status?: number }).status = (lastError as { status?: number })
+      .status;
+    throw err;
   }
 
   async function uploadSingle(
@@ -380,14 +488,17 @@ export default function UploadZone({
     try {
       // ── MULTIPART path (files > 50 MB) ───────────────────────────────────
       if (file.size > MULTIPART_THRESHOLD) {
-        let session = mpSessionsRef.current[index];
+        // Reuse an in-memory session, or a persisted one from a previous page
+        // visit, so a retry/reload resumes from the last good part instead of
+        // restarting from zero.
+        let session =
+          mpSessionsRef.current[index] ?? loadPersistedSession(file);
 
-        // Reuse a stored session when retrying a failed upload so we can resume
-        // from the last completed part instead of restarting from zero.
         if (
           !session ||
           session.chunkSize <= 0 ||
-          Math.ceil(file.size / session.chunkSize) !== session.totalParts
+          Math.ceil(file.size / session.chunkSize) !== session.totalParts ||
+          session.partUrls.length !== session.totalParts
         ) {
           const initiateRes = await fetch("/api/upload/multipart/initiate", {
             method: "POST",
@@ -427,6 +538,7 @@ export default function UploadZone({
         if (!session) {
           throw new Error("Failed to initialize multipart upload session.");
         }
+        persistSession(file, session);
         const active = session;
         const { token, shareUrl, storageKey, uploadId, chunkSize } = active;
 
@@ -455,9 +567,14 @@ export default function UploadZone({
 
         try {
           // Upload remaining parts with limited concurrency + per-part retry.
+          // Use allSettled so a single failing part does NOT abort the whole
+          // upload — failures are collected and handled in a dedicated recovery
+          // pass afterward.
+          const failedParts: number[] = [];
+
           for (let i = 0; i < remainingParts.length; i += CONCURRENCY) {
             const batch = remainingParts.slice(i, i + CONCURRENCY);
-            await Promise.all(
+            const results = await Promise.allSettled(
               batch.map(async (partNumber) => {
                 const start = (partNumber - 1) * chunkSize;
                 const end = Math.min(start + chunkSize, file.size);
@@ -475,8 +592,38 @@ export default function UploadZone({
 
                 active.completed[partNumber] = etag;
                 completedParts.push({ partNumber, etag });
+                persistSession(file, active);
               }),
             );
+
+            results.forEach((r, idx) => {
+              if (r.status === "rejected") failedParts.push(batch[idx]);
+            });
+          }
+
+          // Recovery pass: retry only the parts that failed, sequentially, so a
+          // struggling connection isn't overloaded. These get their own fresh set
+          // of retries on top of the ones already attempted.
+          if (failedParts.length > 0) {
+            for (const partNumber of failedParts) {
+              const start = (partNumber - 1) * chunkSize;
+              const end = Math.min(start + chunkSize, file.size);
+              const chunk = file.slice(start, end);
+
+              const etag = await uploadPart(
+                chunk,
+                active.partUrls[partNumber - 1],
+                (loaded) => {
+                  partProgress[partNumber - 1] = loaded;
+                  updateProgress();
+                },
+                partNumber,
+              );
+
+              active.completed[partNumber] = etag;
+              completedParts.push({ partNumber, etag });
+              persistSession(file, active);
+            }
           }
         } catch (partErr) {
           // Keep the session (with completed parts) so a retry can resume instead
@@ -486,6 +633,18 @@ export default function UploadZone({
 
         // Sort parts by partNumber before completing
         completedParts.sort((a, b) => a.partNumber - b.partNumber);
+
+        // Ensure every part made it — otherwise the multipart cannot be completed.
+        const expectedParts = new Set(
+          Array.from({ length: active.totalParts }, (_, i) => i + 1),
+        );
+        const haveParts = new Set(completedParts.map((p) => p.partNumber));
+        if ([...expectedParts].some((p) => !haveParts.has(p))) {
+          throw new Error(
+            "Some parts failed repeatedly. The upload can't complete, but your " +
+              "progress is saved — press Retry to resume from the last good part.",
+          );
+        }
 
         const completeRes = await fetch("/api/upload/multipart/complete", {
           method: "POST",
@@ -503,8 +662,9 @@ export default function UploadZone({
           throw new Error(err.error || "Failed to complete multipart upload.");
         }
 
-        // Upload finished — drop the stored session.
+        // Upload finished — drop the stored session (memory + localStorage).
         delete mpSessionsRef.current[index];
+        clearPersistedSession(file);
 
         if (defaultCollectionId) {
           await fetch(`/api/collections/${defaultCollectionId}/files`, {
@@ -819,6 +979,7 @@ export default function UploadZone({
       }).catch(() => {});
     }
     mpSessionsRef.current = {};
+    clearAllPersistedSessions();
   }
 
   const hasPending = fileStates.some(
