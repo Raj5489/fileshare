@@ -540,26 +540,57 @@ export default function UploadZone({
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        // If a request stalls with no progress (e.g. the R2 connection drops or a
+        // CORS preflight hangs), the promise below would never settle and the UI
+        // would stay stuck on "Uploading… 0%". The watchdog aborts it instead.
+        const STALL_TIMEOUT_MS = 45000;
+        let lastActivity = Date.now();
+        const markActivity = () => {
+          lastActivity = Date.now();
+        };
+        const watchdog = window.setInterval(() => {
+          if (Date.now() - lastActivity > STALL_TIMEOUT_MS) {
+            window.clearInterval(watchdog);
+            xhr.abort();
+            reject(
+              new Error(
+                "Upload stalled (no progress for 45s). Check your connection and R2 CORS.",
+              ),
+            );
+          }
+        }, 5000);
+        const clearWatchdog = () => window.clearInterval(watchdog);
+
         xhr.upload.addEventListener("progress", (e) => {
+          markActivity();
           if (e.lengthComputable)
             updateState({ progress: Math.round((e.loaded / e.total) * 100) });
         });
-        xhr.addEventListener("load", () =>
-          xhr.status >= 200 && xhr.status < 300
-            ? resolve()
-            : reject(
-                new Error(
-                  `Storage upload failed (${xhr.status}). Check R2 CORS settings.`,
-                ),
+        xhr.addEventListener("loadstart", markActivity);
+        xhr.addEventListener("load", () => {
+          clearWatchdog();
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `Storage upload failed (${xhr.status}). Check R2 CORS settings.`,
               ),
-        );
-        xhr.addEventListener("error", () =>
+            );
+          }
+        });
+        xhr.addEventListener("error", () => {
+          clearWatchdog();
           reject(
             new Error(
               "Storage upload network error. Ensure Cloudflare R2 CORS allows this domain.",
             ),
-          ),
-        );
+          );
+        });
+        xhr.addEventListener("abort", () => {
+          clearWatchdog();
+          reject(new Error("Upload aborted."));
+        });
         xhr.open("PUT", presignedUrl);
         xhr.setRequestHeader(
           "Content-Type",
@@ -608,6 +639,7 @@ export default function UploadZone({
     setUploading(true);
     onUploadingChange?.(true);
 
+    try {
     const pendingIndices = fileStates
       .map((s, i) => ({ s, i }))
       .filter(({ s }) => s.status === "pending" || s.status === "error")
@@ -744,8 +776,13 @@ export default function UploadZone({
       // Single file — just set completed results
       setCompletedResults(newResults);
     }
-    setUploading(false);
-    onUploadingChange?.(false);
+    } catch (err) {
+      console.error("[UploadZone] handleUploadAll failed:", err);
+      toast.error("Unexpected upload error. Please try again.");
+    } finally {
+      setUploading(false);
+      onUploadingChange?.(false);
+    }
   }
 
   function handleReset() {
