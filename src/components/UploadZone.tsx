@@ -360,7 +360,8 @@ export default function UploadZone({
 
       // If a part stalls with no progress (connection drops, preflight hangs),
       // abort it so the retry layer can pick it up instead of waiting forever.
-      const STALL_TIMEOUT_MS = 60 * 1000;
+      // 90s gives slow connections time to finish a 10 MB part without false aborts.
+      const STALL_TIMEOUT_MS = 90 * 1000;
       let lastActivity = Date.now();
       const markActivity = () => {
         lastActivity = Date.now();
@@ -481,7 +482,10 @@ export default function UploadZone({
     const file = state.file;
 
     const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50 MB
-    const CONCURRENCY = 8; // parallel part uploads
+    // 3 concurrent parts keeps R2 saturated without starving individual parts
+    // on a slow connection. 8 was too many — parts 7 & 8 got almost no
+    // bandwidth and hit the 60s stall watchdog, causing repeated aborts.
+    const CONCURRENCY = 3; // parallel part uploads
 
     const updateState = (patch: Partial<FileUploadState>) =>
       setFileStates((prev) =>
