@@ -52,7 +52,10 @@ interface MultipartSession {
   uploadId: string;
   chunkSize: number;
   totalParts: number;
-  partUrls: string[];
+  // Sparse map of partNumber (1-indexed) → presigned URL.
+  // The initiate endpoint only returns the first batch; subsequent batches are
+  // fetched on-demand just before they are needed so URLs are always fresh.
+  partUrls: Record<number, string>;
   completed: Record<number, string>; // partNumber -> ETag
 }
 
@@ -150,9 +153,10 @@ function loadPersistedSession(file: File): MultipartSession | null {
     if (!s || typeof s !== "object") return null;
     if (!s.token || !s.storageKey || !s.uploadId) return null;
     if (typeof s.chunkSize !== "number" || s.chunkSize <= 0) return null;
-    if (!Array.isArray(s.partUrls)) return null;
+    if (!Array.isArray(s.partUrls) && typeof s.partUrls !== "object")
+      return null;
     const totalParts = Math.ceil(file.size / s.chunkSize);
-    if (totalParts !== s.totalParts || s.partUrls.length !== totalParts) {
+    if (totalParts !== s.totalParts) {
       return null;
     }
     if (!s.completed || typeof s.completed !== "object") return null;
@@ -463,8 +467,9 @@ export default function UploadZone({
     const err = new Error(
       `Part ${partNumber} failed after ${MAX_RETRIES} attempts: ${lastError.message}`,
     );
-    (err as { status?: number }).status = (lastError as { status?: number })
-      .status;
+    (err as { status?: number }).status = (
+      lastError as { status?: number }
+    ).status;
     throw err;
   }
 
@@ -497,8 +502,7 @@ export default function UploadZone({
         if (
           !session ||
           session.chunkSize <= 0 ||
-          Math.ceil(file.size / session.chunkSize) !== session.totalParts ||
-          session.partUrls.length !== session.totalParts
+          Math.ceil(file.size / session.chunkSize) !== session.totalParts
         ) {
           const initiateRes = await fetch("/api/upload/multipart/initiate", {
             method: "POST",
@@ -522,14 +526,22 @@ export default function UploadZone({
 
           const data = await initiateRes.json();
 
+          // The server returns `totalParts` and only the first batch of URLs.
+          // We store them as a sparse map (partNumber → url) so we can add
+          // more batches later without re-initiating.
+          const initialUrls: Record<number, string> = {};
+          (data.partUrls as string[]).forEach((url, i) => {
+            initialUrls[i + 1] = url;
+          });
+
           session = {
             token: data.token,
             shareUrl: data.shareUrl,
             storageKey: data.storageKey,
             uploadId: data.uploadId,
             chunkSize: data.chunkSize,
-            totalParts: data.partUrls.length,
-            partUrls: data.partUrls,
+            totalParts: data.totalParts,
+            partUrls: initialUrls,
             completed: {},
           };
           mpSessionsRef.current[index] = session;
@@ -565,24 +577,82 @@ export default function UploadZone({
         }
         updateProgress();
 
+        // Helper: ensure presigned URLs for a range of parts are available in
+        // the session, fetching a fresh batch from the server if any are missing.
+        // This is the key fix for the "stalls at 46%" bug: instead of generating
+        // all URLs at initiation (where later ones expire before use), we fetch
+        // each batch just-in-time so they are always freshly signed.
+        async function ensurePartUrls(
+          firstPart: number,
+          lastPart: number,
+        ): Promise<void> {
+          const missing = Array.from(
+            { length: lastPart - firstPart + 1 },
+            (_, i) => firstPart + i,
+          ).filter((p) => !active.partUrls[p]);
+
+          if (missing.length === 0) return;
+
+          const fromPart = missing[0];
+          const res = await fetch("/api/upload/multipart/part-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storageKey: active.storageKey,
+              uploadId: active.uploadId,
+              fromPart,
+              totalParts: active.totalParts,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(
+              err.error || `Failed to fetch part URLs (HTTP ${res.status})`,
+            );
+          }
+
+          const data = await res.json();
+          (data.urls as string[]).forEach((url: string, i: number) => {
+            active.partUrls[data.fromPart + i] = url;
+          });
+          // Persist the refreshed URLs so a reload can resume without re-fetching
+          persistSession(file, active);
+        }
+
         try {
           // Upload remaining parts with limited concurrency + per-part retry.
-          // Use allSettled so a single failing part does NOT abort the whole
-          // upload — failures are collected and handled in a dedicated recovery
-          // pass afterward.
+          // Fetch presigned URLs for each batch just before uploading it —
+          // never more than CONCURRENCY parts ahead — so they are always fresh.
           const failedParts: number[] = [];
 
           for (let i = 0; i < remainingParts.length; i += CONCURRENCY) {
             const batch = remainingParts.slice(i, i + CONCURRENCY);
+
+            // Fetch URLs for this batch (and the next one) before we start
+            // uploading, so we don't block mid-batch waiting for a network round-trip.
+            const prefetchEnd =
+              remainingParts[
+                Math.min(i + CONCURRENCY * 2 - 1, remainingParts.length - 1)
+              ] ?? batch[batch.length - 1];
+            await ensurePartUrls(batch[0], prefetchEnd);
+
             const results = await Promise.allSettled(
               batch.map(async (partNumber) => {
                 const start = (partNumber - 1) * chunkSize;
                 const end = Math.min(start + chunkSize, file.size);
                 const chunk = file.slice(start, end);
 
+                const url = active.partUrls[partNumber];
+                if (!url) {
+                  throw new Error(
+                    `Presigned URL missing for part ${partNumber}`,
+                  );
+                }
+
                 const etag = await uploadPart(
                   chunk,
-                  active.partUrls[partNumber - 1],
+                  url,
                   (loaded) => {
                     partProgress[partNumber - 1] = loaded;
                     updateProgress();
@@ -602,17 +672,42 @@ export default function UploadZone({
           }
 
           // Recovery pass: retry only the parts that failed, sequentially, so a
-          // struggling connection isn't overloaded. These get their own fresh set
-          // of retries on top of the ones already attempted.
+          // struggling connection isn't overloaded.
           if (failedParts.length > 0) {
             for (const partNumber of failedParts) {
               const start = (partNumber - 1) * chunkSize;
               const end = Math.min(start + chunkSize, file.size);
               const chunk = file.slice(start, end);
 
+              // Always fetch a fresh URL for a retry — the old one may be stale.
+              const refreshRes = await fetch(
+                "/api/upload/multipart/part-urls",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    storageKey: active.storageKey,
+                    uploadId: active.uploadId,
+                    fromPart: partNumber,
+                    totalParts: active.totalParts,
+                  }),
+                },
+              );
+              if (refreshRes.ok) {
+                const refreshData = await refreshRes.json();
+                active.partUrls[partNumber] = refreshData.urls[0];
+              }
+
+              const url = active.partUrls[partNumber];
+              if (!url) {
+                throw new Error(
+                  `Could not obtain a presigned URL for part ${partNumber}`,
+                );
+              }
+
               const etag = await uploadPart(
                 chunk,
-                active.partUrls[partNumber - 1],
+                url,
                 (loaded) => {
                   partProgress[partNumber - 1] = loaded;
                   updateProgress();
@@ -809,150 +904,153 @@ export default function UploadZone({
     onUploadingChange?.(true);
 
     try {
-    const pendingIndices = fileStates
-      .map((s, i) => ({ s, i }))
-      .filter(({ s }) => s.status === "pending" || s.status === "error")
-      .map(({ i }) => i);
+      const pendingIndices = fileStates
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) => s.status === "pending" || s.status === "error")
+        .map(({ i }) => i);
 
-    const CONCURRENCY = 3;
-    let successCount = 0;
-    let errorCount = 0;
-    const newResults: Array<{ name: string; shareUrl: string; token: string }> =
-      [];
+      const CONCURRENCY = 3;
+      let successCount = 0;
+      let errorCount = 0;
+      const newResults: Array<{
+        name: string;
+        shareUrl: string;
+        token: string;
+      }> = [];
 
-    for (let i = 0; i < pendingIndices.length; i += CONCURRENCY) {
-      const batch = pendingIndices.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(
-        batch.map((idx) => uploadSingle(idx)),
-      );
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) {
-          successCount++;
-          newResults.push(r.value);
-        } else {
-          errorCount++;
+      for (let i = 0; i < pendingIndices.length; i += CONCURRENCY) {
+        const batch = pendingIndices.slice(i, i + CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map((idx) => uploadSingle(idx)),
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) {
+            successCount++;
+            newResults.push(r.value);
+          } else {
+            errorCount++;
+          }
         }
       }
-    }
 
-    if (successCount > 0)
-      toast.success(
-        `${successCount} item${successCount > 1 ? "s" : ""} uploaded!`,
-      );
-    if (errorCount > 0)
-      toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
+      if (successCount > 0)
+        toast.success(
+          `${successCount} item${successCount > 1 ? "s" : ""} uploaded!`,
+        );
+      if (errorCount > 0)
+        toast.error(`${errorCount} item${errorCount > 1 ? "s" : ""} failed.`);
 
-    // If multiple files uploaded successfully, auto-create or reuse today's collection
-    if (newResults.length > 1) {
-      try {
-        const todayLabel = new Date().toLocaleDateString("en-GB", {
-          day: "numeric",
-          month: "short",
-        });
+      // If multiple files uploaded successfully, auto-create or reuse today's collection
+      if (newResults.length > 1) {
+        try {
+          const todayLabel = new Date().toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+          });
 
-        // Resolve auth state client-side first so guests never hit the
-        // protected /api/collections endpoint (avoids a wasted, slow 401
-        // round-trip and keeps the DevTools network log clean).
-        const { data: sessionData } =
-          await getSupabaseBrowser().auth.getSession();
-        const isAuthenticated = Boolean(sessionData.session?.user);
+          // Resolve auth state client-side first so guests never hit the
+          // protected /api/collections endpoint (avoids a wasted, slow 401
+          // round-trip and keeps the DevTools network log clean).
+          const { data: sessionData } =
+            await getSupabaseBrowser().auth.getSession();
+          const isAuthenticated = Boolean(sessionData.session?.user);
 
-        const listRes = isAuthenticated
-          ? await fetch("/api/collections")
-          : null;
+          const listRes = isAuthenticated
+            ? await fetch("/api/collections")
+            : null;
 
-        if (listRes?.ok) {
-          // Logged-in user
-          const { collections: existingCols } = await listRes.json();
+          if (listRes?.ok) {
+            // Logged-in user
+            const { collections: existingCols } = await listRes.json();
 
-          // Find a collection created today (same calendar day)
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
+            // Find a collection created today (same calendar day)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
 
-          const todayCol = (
-            existingCols as Array<{
-              id: string;
-              name: string;
-              share_token: string;
-              created_at: string;
-            }>
-          ).find((c) => new Date(c.created_at) >= todayStart);
+            const todayCol = (
+              existingCols as Array<{
+                id: string;
+                name: string;
+                share_token: string;
+                created_at: string;
+              }>
+            ).find((c) => new Date(c.created_at) >= todayStart);
 
-          let collection: { id: string; name: string; share_token: string };
+            let collection: { id: string; name: string; share_token: string };
 
-          if (todayCol) {
-            // Reuse today's collection — just add files to it
-            collection = todayCol;
-          } else {
-            // Create a new collection for today
-            const colName = `${newResults.length} files – ${todayLabel}`;
-            const colRes = await fetch("/api/collections", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: colName }),
-            });
-            if (!colRes.ok) throw new Error("Failed to create collection");
-            const data = await colRes.json();
-            collection = data.collection;
-          }
-
-          // Link new files to the collection
-          await Promise.allSettled(
-            newResults.map((r) =>
-              fetch(`/api/collections/${collection.id}/files`, {
+            if (todayCol) {
+              // Reuse today's collection — just add files to it
+              collection = todayCol;
+            } else {
+              // Create a new collection for today
+              const colName = `${newResults.length} files – ${todayLabel}`;
+              const colRes = await fetch("/api/collections", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: r.token, action: "add" }),
-              }),
-            ),
-          );
+                body: JSON.stringify({ name: colName }),
+              });
+              if (!colRes.ok) throw new Error("Failed to create collection");
+              const data = await colRes.json();
+              collection = data.collection;
+            }
 
-          const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
-          setCollectionResult({
-            name: collection.name,
-            shareUrl,
-            token: collection.share_token,
-            fileCount: newResults.length,
-          });
-        } else {
-          // Guest user: use the guest collection endpoint
-          const colName = `${newResults.length} files – ${todayLabel}`;
-          const guestRes = await fetch("/api/collections/guest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: colName,
-              tokens: newResults.map((r) => r.token),
-            }),
-          });
+            // Link new files to the collection
+            await Promise.allSettled(
+              newResults.map((r) =>
+                fetch(`/api/collections/${collection.id}/files`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ token: r.token, action: "add" }),
+                }),
+              ),
+            );
 
-          if (guestRes.ok) {
-            const { collection } = await guestRes.json();
             const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
             setCollectionResult({
-              name: colName,
+              name: collection.name,
               shareUrl,
               token: collection.share_token,
               fileCount: newResults.length,
             });
           } else {
-            const errText = await guestRes.text();
-            console.warn(
-              "[UploadZone] Guest collection API failed:",
-              guestRes.status,
-              errText,
-            );
-            setCompletedResults(newResults);
+            // Guest user: use the guest collection endpoint
+            const colName = `${newResults.length} files – ${todayLabel}`;
+            const guestRes = await fetch("/api/collections/guest", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: colName,
+                tokens: newResults.map((r) => r.token),
+              }),
+            });
+
+            if (guestRes.ok) {
+              const { collection } = await guestRes.json();
+              const shareUrl = `${window.location.origin}/c/${collection.share_token}`;
+              setCollectionResult({
+                name: colName,
+                shareUrl,
+                token: collection.share_token,
+                fileCount: newResults.length,
+              });
+            } else {
+              const errText = await guestRes.text();
+              console.warn(
+                "[UploadZone] Guest collection API failed:",
+                guestRes.status,
+                errText,
+              );
+              setCompletedResults(newResults);
+            }
           }
+        } catch (err) {
+          console.warn("[UploadZone] Collection error:", err);
+          setCompletedResults(newResults);
         }
-      } catch (err) {
-        console.warn("[UploadZone] Collection error:", err);
+      } else {
+        // Single file — just set completed results
         setCompletedResults(newResults);
       }
-    } else {
-      // Single file — just set completed results
-      setCompletedResults(newResults);
-    }
     } catch (err) {
       console.error("[UploadZone] handleUploadAll failed:", err);
       toast.error("Unexpected upload error. Please try again.");
@@ -975,7 +1073,10 @@ export default function UploadZone({
       fetch("/api/upload/multipart/abort", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageKey: s.storageKey, uploadId: s.uploadId }),
+        body: JSON.stringify({
+          storageKey: s.storageKey,
+          uploadId: s.uploadId,
+        }),
       }).catch(() => {});
     }
     mpSessionsRef.current = {};

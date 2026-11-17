@@ -4,7 +4,12 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createMultipartUpload, getPresignedPartUrl } from "@/lib/r2";
-import { guestUploadLimit, authUploadLimit, apiLimit, checkGuestStorageQuota } from "@/lib/rate-limit";
+import {
+  guestUploadLimit,
+  authUploadLimit,
+  apiLimit,
+  checkGuestStorageQuota,
+} from "@/lib/rate-limit";
 import {
   generateShareToken,
   generateStorageKey,
@@ -15,8 +20,12 @@ import {
   USER_STORAGE_QUOTA,
 } from "@/lib/utils";
 
-// 50 MB per chunk — small enough to survive flaky connections, well above 5 MB minimum
-export const MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024;
+// 10 MB per chunk — well above the 5 MB S3 minimum, small enough that each part
+// finishes quickly on a slow connection and presigned URLs don't expire mid-upload.
+// A 3.9 GB file produces ~400 parts; at 8 concurrent parts that's ~50 batches.
+// (Previously 50 MB chunks made a 3.9 GB file stop at ~46% because the presigned
+// URLs for the later parts expired before those parts were reached.)
+export const MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024;
 
 const initiateSchema = z.object({
   original_name: z.string().min(1).max(255),
@@ -173,12 +182,18 @@ export async function POST(req: NextRequest) {
     // Create R2 multipart upload session
     const uploadId = await createMultipartUpload(storage_key, mime_type);
 
-    // Generate presigned URL for every part (1-indexed). Returned as a flat
-    // array of URL strings — the client expects `partUrls: string[]`.
     const numParts = Math.ceil(file_size / MULTIPART_CHUNK_SIZE);
+
+    // Only generate presigned URLs for the first batch (up to 16 parts = 160 MB).
+    // The client fetches URLs for subsequent batches on-demand via the
+    // /api/upload/multipart/part-urls endpoint, so they are always freshly
+    // signed and never expire before the browser reaches them.
+    // Presigned part URLs are valid for 2 hours — enough for any single batch.
+    const INITIAL_BATCH = 16;
+    const firstBatchCount = Math.min(INITIAL_BATCH, numParts);
     const partUrls = await Promise.all(
-      Array.from({ length: numParts }, (_, i) =>
-        getPresignedPartUrl(storage_key, uploadId, i + 1, 4 * 3600),
+      Array.from({ length: firstBatchCount }, (_, i) =>
+        getPresignedPartUrl(storage_key, uploadId, i + 1, 2 * 3600),
       ),
     );
 
@@ -187,7 +202,7 @@ export async function POST(req: NextRequest) {
     ).replace(/\/$/, "");
 
     console.log(
-      `[Upload/Multipart/Initiate] token=${share_token} parts=${numParts} uploadId=${uploadId}`,
+      `[Upload/Multipart/Initiate] token=${share_token} totalParts=${numParts} firstBatch=${firstBatchCount} uploadId=${uploadId}`,
     );
 
     return NextResponse.json({
@@ -197,7 +212,8 @@ export async function POST(req: NextRequest) {
       uploadId,
       mimeType: mime_type,
       chunkSize: MULTIPART_CHUNK_SIZE,
-      partUrls,
+      totalParts: numParts,
+      partUrls, // first batch only; fetch more via /api/upload/multipart/part-urls
     });
   } catch (err) {
     console.error("[Upload/Multipart/Initiate] Error:", err);
