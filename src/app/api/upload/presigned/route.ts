@@ -91,7 +91,16 @@ export async function POST(req: NextRequest) {
     // Generate token and storage key
     const share_token = generateShareToken();
     const storage_key = generateStorageKey(original_name);
-    const expires_at = parseExpiry(expires_in || "24h");
+
+    // Guests cannot set "never" or "30d" — cap to 7d to match the multipart/initiate route
+    let effectiveExpiresIn = expires_in || "24h";
+    if (
+      !user &&
+      (effectiveExpiresIn === "never" || effectiveExpiresIn === "30d")
+    ) {
+      effectiveExpiresIn = "7d";
+    }
+    const expires_at = parseExpiry(effectiveExpiresIn);
 
     // Hash password if provided
     let password_hash: string | null = null;
