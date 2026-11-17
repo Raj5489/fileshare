@@ -25,6 +25,14 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
+
+/** Format seconds into a human-readable ETA string, e.g. "2 min 14 s" or "45 s". */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${Math.ceil(seconds)} s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.ceil(seconds % 60);
+  return s > 0 ? `${m} min ${s} s` : `${m} min`;
+}
 import { getSupabaseBrowser } from "@/lib/supabase";
 import ShareCard from "./ShareCard";
 
@@ -43,6 +51,8 @@ interface FileUploadState {
   error?: string;
   result?: UploadResult;
   isFolder?: boolean;
+  speed?: number; // bytes per second, rolling average
+  eta?: number; // seconds remaining
 }
 
 interface MultipartSession {
@@ -228,6 +238,12 @@ export default function UploadZone({
   // Multipart sessions keyed by file index — enables resuming a partial upload
   // when a file fails and is retried (instead of restarting from zero).
   const mpSessionsRef = useRef<Record<number, MultipartSession>>({});
+
+  // Speed tracking: keyed by file index, holds a rolling window of {bytes, time}
+  // samples used to compute a smoothed bytes/sec estimate.
+  const speedSamplesRef = useRef<
+    Record<number, { bytes: number; time: number }[]>
+  >({});
 
   // Regular file drop (react-dropzone handles files only)
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -560,11 +576,36 @@ export default function UploadZone({
 
         // Track per-part bytes uploaded for accurate overall progress
         const partProgress = new Array<number>(active.totalParts).fill(0);
+        // Initialise speed sample window for this file
+        speedSamplesRef.current[index] = [];
         const updateProgress = () => {
           const totalLoaded = partProgress.reduce((a, b) => a + b, 0);
-          updateState({
-            progress: Math.round((totalLoaded / file.size) * 100),
-          });
+          const progress = Math.round((totalLoaded / file.size) * 100);
+
+          // Rolling 8-second window of (bytes, timestamp) samples → bytes/sec
+          const now = Date.now();
+          const samples = speedSamplesRef.current[index] ?? [];
+          samples.push({ bytes: totalLoaded, time: now });
+          // Drop samples older than 8 seconds
+          const cutoff = now - 8000;
+          while (samples.length > 1 && samples[0].time < cutoff)
+            samples.shift();
+          speedSamplesRef.current[index] = samples;
+
+          let speed: number | undefined;
+          let eta: number | undefined;
+          if (samples.length >= 2) {
+            const oldest = samples[0];
+            const elapsed = (now - oldest.time) / 1000; // seconds
+            const bytesDelta = totalLoaded - oldest.bytes;
+            if (elapsed > 0 && bytesDelta > 0) {
+              speed = bytesDelta / elapsed;
+              const remaining = file.size - totalLoaded;
+              eta = remaining / speed;
+            }
+          }
+
+          updateState({ progress, speed, eta });
         };
 
         // Completed parts we already have from a previous attempt (resume).
@@ -763,6 +804,7 @@ export default function UploadZone({
 
         // Upload finished — drop the stored session (memory + localStorage).
         delete mpSessionsRef.current[index];
+        delete speedSamplesRef.current[index];
         clearPersistedSession(file);
 
         if (defaultCollectionId) {
@@ -1208,9 +1250,19 @@ export default function UploadZone({
               {state.status === "uploading" && (
                 <div className="px-4 pb-3">
                   <Progress value={state.progress} className="h-1.5" />
-                  <p className="mt-1 text-right text-xs text-muted-foreground">
-                    {state.progress}%
-                  </p>
+                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {state.speed !== undefined
+                        ? `${formatBytes(state.speed)}/s`
+                        : ""}
+                    </span>
+                    <span>
+                      {state.eta !== undefined && state.speed !== undefined
+                        ? `~${formatEta(state.eta)} left · `
+                        : ""}
+                      {state.progress}%
+                    </span>
+                  </div>
                 </div>
               )}
               {state.status === "error" && (
