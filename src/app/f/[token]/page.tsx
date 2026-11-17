@@ -7,6 +7,10 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getSignedDownloadUrl } from "@/lib/r2";
 import { formatBytes } from "@/lib/utils";
 
+// Revalidate share pages every 60 seconds — avoids regenerating on every hit
+// while still reflecting expiry/deletion changes within a minute.
+export const revalidate = 60;
+
 async function getFileMetadata(token: string) {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

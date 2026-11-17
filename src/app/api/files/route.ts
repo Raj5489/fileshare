@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
         .range(offset, offset + limit - 1),
       admin
         .from("profiles")
-        .select("storage_used, file_count")
+        .select("storage_used, file_count, total_downloads")
         .eq("id", user.id)
         .single(),
       admin
@@ -62,15 +62,15 @@ export async function GET(req: NextRequest) {
     const files = filesResult.data || [];
     const count = filesResult.count || 0;
 
-    // Compute total downloads from current page — for accurate total we sum all files
-    const { data: allFiles } = await admin
-      .from("files")
-      .select("download_count")
-      .eq("user_id", user.id)
-      .eq("is_deleted", false);
-
+    // Fall back to summing the current page if total_downloads isn't in the profile yet
     const totalDownloads =
-      allFiles?.reduce((sum, f) => sum + (f.download_count || 0), 0) || 0;
+      typeof profileResult.data?.total_downloads === "number"
+        ? profileResult.data.total_downloads
+        : files.reduce(
+            (sum: number, f: { download_count: number }) =>
+              sum + (f.download_count || 0),
+            0,
+          );
 
     return NextResponse.json({
       files,

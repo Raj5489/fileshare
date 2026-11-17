@@ -23,7 +23,10 @@ import { User, LogOut, UploadCloud, Loader2, Download } from "lucide-react";
 
 export default function Navbar() {
   const [user, setUser] = useState<{ email?: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Start as false — we read the cached session synchronously first so the
+  // nav renders immediately on every page instead of showing a spinner until
+  // the Supabase auth listener fires (which can take 1-2s on a slow connection).
+  const [loading, setLoading] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -44,12 +47,20 @@ export default function Navbar() {
   }, [router]);
 
   useEffect(() => {
+    // Read the cached session immediately so the nav renders the correct state
+    // (logged-in avatar or Login button) on first paint without waiting for the
+    // async listener. getSession() resolves from localStorage — no network call.
+    getSupabaseBrowser()
+      .auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ? { email: session.user.email } : null);
+      });
+
     // onAuthStateChange fires an INITIAL_SESSION event on mount, which covers
     // the post-OAuth-redirect case.
     const { data: listener } = getSupabaseBrowser().auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ? { email: session.user.email } : null);
-        setLoading(false);
         // After Google/GitHub OAuth redirect the SIGNED_IN event fires here.
         // Calling router.refresh() syncs the Next.js server cache so protected
         // routes and server components see the new session immediately.
@@ -204,7 +215,11 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
             <DialogTrigger>
-              <Button variant="outline" size="sm" className="gap-2 px-2.5 sm:px-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 px-2.5 sm:px-3"
+              >
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Receive File</span>
               </Button>
@@ -249,12 +264,16 @@ export default function Navbar() {
           </Dialog>
 
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="h-8 w-20 rounded-md bg-muted animate-pulse" />
           ) : user ? (
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger>
-                  <Button variant="ghost" size="sm" className="gap-2 px-2 sm:px-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 px-2 sm:px-3"
+                  >
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
                       <User className="h-3.5 w-3.5 text-primary" />
                     </div>
