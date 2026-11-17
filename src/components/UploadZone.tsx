@@ -1322,7 +1322,7 @@ export default function UploadZone({
 
       {/* Actions bar */}
       {fileStates.length > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+        <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="flex items-center gap-2">
             {hasPending && (
               <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}>
@@ -1464,7 +1464,7 @@ export default function UploadZone({
               onClick={handleUploadAll}
               disabled={uploading || zipping}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 w-full sm:w-auto"
             >
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

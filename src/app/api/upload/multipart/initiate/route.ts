@@ -32,7 +32,7 @@ const initiateSchema = z.object({
   file_size: z
     .number()
     .int()
-    .positive()
+    .min(0) // 0 is valid — e.g. an empty .txt file
     .max(10 * 1024 * 1024 * 1024),
   mime_type: z.string().min(1).max(100),
   expires_in: z.enum(["1h", "24h", "7d", "30d", "never"]).optional(),

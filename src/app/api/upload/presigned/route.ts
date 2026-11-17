@@ -4,7 +4,12 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { getPresignedUploadUrl } from "@/lib/r2";
-import { guestUploadLimit, authUploadLimit, apiLimit, checkGuestStorageQuota } from "@/lib/rate-limit";
+import {
+  guestUploadLimit,
+  authUploadLimit,
+  apiLimit,
+  checkGuestStorageQuota,
+} from "@/lib/rate-limit";
 import {
   generateShareToken,
   generateStorageKey,
@@ -20,7 +25,7 @@ const presignedSchema = z.object({
   file_size: z
     .number()
     .int()
-    .positive()
+    .min(0) // 0 is valid — e.g. an empty .txt file
     .max(10 * 1024 * 1024 * 1024),
   mime_type: z.string().min(1).max(100),
   expires_in: z.enum(["1h", "24h", "7d", "30d", "never"]).optional(),
@@ -180,10 +185,7 @@ export async function POST(req: NextRequest) {
     console.error("[Upload/Presigned] Error:", err);
     return NextResponse.json(
       {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Internal server error.",
+        error: err instanceof Error ? err.message : "Internal server error.",
       },
       { status: 500 },
     );
