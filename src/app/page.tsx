@@ -24,7 +24,7 @@ export default function Home() {
         </div>
 
         {/* Hero content */}
-        <section className="relative z-10 flex w-full flex-col items-center px-6 pt-24 pb-16">
+        <section className="relative z-10 flex w-full flex-col items-center px-6 pt-16 pb-12">
           {/* Badge */}
           <div className="animate-fade-up mb-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary shadow-sm">
             <span className="relative flex h-2 w-2">
@@ -52,7 +52,7 @@ export default function Home() {
 
           {/* Upload zone */}
           <div
-            className="animate-fade-up mt-12 w-full max-w-xl"
+            className="animate-fade-up mt-10 w-full max-w-xl lg:max-w-2xl"
             style={{ animationDelay: "0.15s" }}
           >
             <HomeUploadZone />
@@ -87,7 +87,7 @@ export default function Home() {
         </section>
 
         {/* ── Features ── */}
-        <section className="relative z-10 w-full max-w-5xl px-6 pb-24">
+        <section className="relative z-10 w-full max-w-6xl px-6 pb-24">
           <div className="mb-12 text-center">
             <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
               Everything you need to share files
