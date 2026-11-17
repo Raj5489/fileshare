@@ -1113,6 +1113,11 @@ export default function UploadZone({
     setPassword("");
     setMaxDownloads("");
     setExpiresIn("24h");
+    // Let the parent know uploading is no longer in progress so the dialog
+    // can be closed/dismissed (fixes the stuck "Upload in progress" state
+    // that blocked the X button after clearing a finished upload).
+    onUploadingChange?.(false);
+    setUploading(false);
 
     // Best-effort abort any dangling multipart sessions to free R2 storage.
     for (const s of Object.values(mpSessionsRef.current)) {
