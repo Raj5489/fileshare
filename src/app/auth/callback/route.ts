@@ -4,7 +4,11 @@ import { createServerClient } from "@supabase/ssr";
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+
+  // Validate the `next` param — only allow same-origin relative paths
+  // to prevent open-redirect attacks.
+  const rawNext = searchParams.get("next") ?? "/dashboard";
+  const next = rawNext.startsWith("/") ? rawNext : "/dashboard";
 
   if (code) {
     const redirectResponse = NextResponse.redirect(`${origin}${next}`);
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest) {
             });
           },
         },
-      }
+      },
     );
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);

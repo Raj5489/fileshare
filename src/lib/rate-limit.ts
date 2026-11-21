@@ -1,11 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { redis } from "./redis";
 
-function makeLimiter(
-  prefix: string,
-  requests: number,
-  window: string
-) {
+function makeLimiter(prefix: string, requests: number, window: string) {
   if (!redis) {
     return {
       limit: async () => ({
@@ -29,7 +25,7 @@ function makeLimiter(
       } catch (err) {
         console.warn(
           `[RateLimit] Redis error for "${prefix}", failing open:`,
-          err instanceof Error ? err.message : err
+          err instanceof Error ? err.message : err,
         );
         return {
           success: true,
@@ -50,6 +46,13 @@ export const downloadLimit = makeLimiter("download", 500, "1 h");
 export const apiLimit = makeLimiter("api", 600, "1 m");
 export const passwordAttemptLimit = makeLimiter("password_attempt", 5, "15 m");
 
+// ── AI Assistant limits ──────────────────────────────────────────────────────
+// Intentionally conservative to stay within Groq free tier.
+// 10 chat messages per minute per IP — prevents spam/abuse.
+export const chatLimit = makeLimiter("chat", 10, "1 m");
+// 3 ticket submissions per hour per IP — prevents ticket spam.
+export const ticketLimit = makeLimiter("ticket", 3, "1 h");
+
 // ── Guest storage quota (Redis/IP-based) ────────────────────────────────
 
 const GUEST_STORAGE_QUOTA = 5 * 1024 * 1024 * 1024; // 5 GB / IP / day
@@ -61,7 +64,7 @@ const GUEST_BYTES_PREFIX = "ratelimit:guest_bytes";
  */
 export async function checkGuestStorageQuota(
   bytes: number,
-  ip: string
+  ip: string,
 ): Promise<{ success: boolean }> {
   if (!redis) return { success: true };
   const day = new Date().toISOString().slice(0, 10);
@@ -83,4 +86,3 @@ export async function checkGuestStorageQuota(
     return { success: true };
   }
 }
-

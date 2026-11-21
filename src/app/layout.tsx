@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import ChatWidget from "@/components/assistant/ChatWidget";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,11 +16,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "FileShare - Share Files Instantly",
-  description: "Share any file, instantly. No account required. Images, PDFs, documents, videos and more.",
+  description:
+    "Share any file, instantly. No account required. Images, PDFs, documents, videos and more.",
   icons: {
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-    ],
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     shortcut: "/icon.svg",
     apple: "/icon.svg",
   },
@@ -37,6 +37,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {children}
+        <ChatWidget />
         <Toaster position="bottom-right" />
       </body>
     </html>
