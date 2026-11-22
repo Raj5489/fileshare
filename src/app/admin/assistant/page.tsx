@@ -143,7 +143,7 @@ export default async function AdminOverviewPage() {
   const s = await getStats();
 
   return (
-    <div className="flex flex-col gap-6 max-w-6xl">
+    <div className="flex flex-col gap-6 max-w-6xl [&>div]:outline-none">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold tracking-tight">Overview</h1>
@@ -153,7 +153,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* ── Conversations row ── */}
-      <div>
+      <div className="outline-none">
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Conversations
         </p>
@@ -183,7 +183,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* ── Tickets row ── */}
-      <div>
+      <div className="outline-none">
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Tickets
         </p>
@@ -219,7 +219,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* ── Other stats row ── */}
-      <div>
+      <div className="outline-none">
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           AI & Knowledge Base
         </p>
@@ -249,7 +249,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* ── Recent activity ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 outline-none">
         {/* Recent conversations */}
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
