@@ -119,7 +119,16 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  /* Scope the focus ring colour only to interactive elements that can receive focus */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [tabindex] {
+    @apply outline-ring/50;
   }
   body {
     @apply bg-background text-foreground antialiased;
