@@ -153,7 +153,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {/* ── Conversations row ── */}
-      <section>
+      <div>
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Conversations
         </p>
@@ -180,10 +180,10 @@ export default async function AdminOverviewPage() {
             sub="telegram bot"
           />
         </div>
-      </section>
+      </div>
 
       {/* ── Tickets row ── */}
-      <section>
+      <div>
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Tickets
         </p>
@@ -216,10 +216,10 @@ export default async function AdminOverviewPage() {
             iconColor="bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400"
           />
         </div>
-      </section>
+      </div>
 
       {/* ── Other stats row ── */}
-      <section>
+      <div>
         <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           AI & Knowledge Base
         </p>
@@ -246,10 +246,10 @@ export default async function AdminOverviewPage() {
             href="/admin/assistant/knowledge"
           />
         </div>
-      </section>
+      </div>
 
       {/* ── Recent activity ── */}
-      <section className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* Recent conversations */}
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
@@ -345,7 +345,7 @@ export default async function AdminOverviewPage() {
             </ul>
           )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }
