@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { MessageCircle, X, RotateCcw, Ticket, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ChatBubble, { type Message } from "./ChatBubble";
@@ -29,6 +30,11 @@ function makeWelcomeMessage(): Message {
 // ── Component ────────────────────────────────────────────────
 
 export default function ChatWidget() {
+  const pathname = usePathname();
+
+  // Don't show the chatbot on admin pages — admins use the dashboard directly
+  if (pathname?.startsWith("/admin")) return null;
+
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("chat");
   const [messages, setMessages] = useState<Message[]>(() => [
