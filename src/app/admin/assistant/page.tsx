@@ -1,6 +1,6 @@
 /**
  * /admin/assistant — Overview
- * Server component: data is fetched server-side, page streams instantly.
+ * Server component: data fetched server-side, streams instantly.
  */
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
@@ -17,11 +17,10 @@ import {
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 
-// ── Data ─────────────────────────────────────────────────────
+// ── Data ─────────────────────────────────────────────────────────────────────
 
 async function getStats() {
   const admin = getSupabaseAdmin();
-
   const [
     convResult,
     ticketResult,
@@ -75,49 +74,63 @@ async function getStats() {
   };
 }
 
-// ── Shared UI ─────────────────────────────────────────────────
+// ── Components ────────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+      {children}
+    </p>
+  );
+}
 
 function StatCard({
   label,
   value,
   sub,
   icon: Icon,
-  iconColor,
+  iconBg,
+  iconFg,
   href,
 }: {
   label: string;
   value: number;
   sub?: string;
   icon: React.ElementType;
-  iconColor: string;
+  iconBg: string;
+  iconFg: string;
   href?: string;
 }) {
-  const content = (
-    <div className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md">
-      <div className="flex items-start justify-between">
-        <p className="text-xs font-medium text-muted-foreground leading-snug">
+  const inner = (
+    <div className="flex h-full flex-col justify-between rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-foreground/70 leading-tight">
           {label}
-        </p>
+        </span>
         <div
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconColor}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className={`h-4 w-4 ${iconFg}`} />
         </div>
       </div>
-      <div>
-        <p className="text-2xl font-bold tracking-tight tabular-nums">
+      <div className="mt-3">
+        <p className="text-3xl font-bold tracking-tight tabular-nums leading-none">
           {value.toLocaleString()}
         </p>
-        {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+        {sub && (
+          <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
+            {sub}
+          </p>
+        )}
       </div>
     </div>
   );
   return href ? (
-    <Link href={href} className="block">
-      {content}
+    <Link href={href} className="block h-full">
+      {inner}
     </Link>
   ) : (
-    content
+    inner
   );
 }
 
@@ -131,147 +144,156 @@ const STATUS_PILL: Record<string, string> = {
 };
 
 const PRIORITY_DOT: Record<string, string> = {
-  low: "bg-muted-foreground/40",
-  medium: "bg-amber-500",
+  low: "bg-muted-foreground/30",
+  medium: "bg-amber-400",
   high: "bg-orange-500",
-  critical: "bg-destructive",
+  critical: "bg-red-500",
 };
 
-// ── Page ──────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function AdminOverviewPage() {
   const s = await getStats();
 
   return (
-    <div className="flex flex-col gap-6 max-w-6xl [&>div]:outline-none">
+    <div className="flex flex-col gap-7 max-w-5xl">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold tracking-tight">Overview</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Live support metrics for FileShare AI.
         </p>
       </div>
 
-      {/* ── Conversations row ── */}
-      <div className="outline-none">
-        <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Conversations
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* ── Conversations ── */}
+      <div>
+        <SectionLabel>Conversations</SectionLabel>
+        <div className="grid grid-cols-3 gap-3">
           <StatCard
             label="Total"
             value={s.conversations.total}
             icon={MessageSquare}
-            iconColor="bg-primary/10 text-primary"
+            iconBg="bg-indigo-100 dark:bg-indigo-900/40"
+            iconFg="text-indigo-600 dark:text-indigo-400"
             href="/admin/assistant/conversations"
           />
           <StatCard
-            label="Web chatbot"
+            label="Web Chatbot"
             value={s.conversations.web}
-            icon={Globe}
-            iconColor="bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400"
             sub="browser widget"
+            icon={Globe}
+            iconBg="bg-violet-100 dark:bg-violet-900/40"
+            iconFg="text-violet-600 dark:text-violet-400"
           />
           <StatCard
             label="Telegram"
             value={s.conversations.telegram}
-            icon={Send}
-            iconColor="bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400"
             sub="telegram bot"
+            icon={Send}
+            iconBg="bg-sky-100 dark:bg-sky-900/40"
+            iconFg="text-sky-600 dark:text-sky-400"
           />
         </div>
       </div>
 
-      {/* ── Tickets row ── */}
-      <div className="outline-none">
-        <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Tickets
-        </p>
+      {/* ── Tickets ── */}
+      <div>
+        <SectionLabel>Tickets</SectionLabel>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard
             label="Total"
             value={s.tickets.total}
             icon={Ticket}
-            iconColor="bg-primary/10 text-primary"
+            iconBg="bg-indigo-100 dark:bg-indigo-900/40"
+            iconFg="text-indigo-600 dark:text-indigo-400"
             href="/admin/assistant/tickets"
           />
           <StatCard
             label="Open"
             value={s.tickets.open}
-            icon={AlertCircle}
-            iconColor="bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"
             sub="needs attention"
+            icon={AlertCircle}
+            iconBg="bg-blue-100 dark:bg-blue-900/40"
+            iconFg="text-blue-600 dark:text-blue-400"
             href="/admin/assistant/tickets"
           />
           <StatCard
-            label="In progress"
+            label="In Progress"
             value={s.tickets.inProgress}
             icon={Clock}
-            iconColor="bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
+            iconBg="bg-amber-100 dark:bg-amber-900/40"
+            iconFg="text-amber-600 dark:text-amber-400"
           />
           <StatCard
             label="Resolved / Closed"
             value={s.tickets.resolved + s.tickets.closed}
             icon={CheckCircle}
-            iconColor="bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400"
+            iconBg="bg-green-100 dark:bg-green-900/40"
+            iconFg="text-green-600 dark:text-green-400"
           />
         </div>
       </div>
 
-      {/* ── Other stats row ── */}
-      <div className="outline-none">
-        <p className="mb-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          AI & Knowledge Base
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* ── AI & Knowledge Base ── */}
+      <div>
+        <SectionLabel>AI & Knowledge Base</SectionLabel>
+        <div className="grid grid-cols-3 gap-3">
           <StatCard
-            label="Total messages"
+            label="Total Messages"
             value={s.messages.total}
-            icon={TrendingUp}
-            iconColor="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400"
             sub="user + AI turns"
+            icon={TrendingUp}
+            iconBg="bg-emerald-100 dark:bg-emerald-900/40"
+            iconFg="text-emerald-600 dark:text-emerald-400"
           />
           <StatCard
-            label="KB entries (active)"
+            label="KB Active"
             value={s.knowledge.active}
+            sub="active entries"
             icon={BookOpen}
-            iconColor="bg-primary/10 text-primary"
+            iconBg="bg-indigo-100 dark:bg-indigo-900/40"
+            iconFg="text-indigo-600 dark:text-indigo-400"
             href="/admin/assistant/knowledge"
           />
           <StatCard
-            label="KB entries (inactive)"
+            label="KB Inactive"
             value={s.knowledge.inactive}
+            sub="deactivated entries"
             icon={BookOpen}
-            iconColor="bg-muted text-muted-foreground"
+            iconBg="bg-muted"
+            iconFg="text-muted-foreground"
             href="/admin/assistant/knowledge"
           />
         </div>
       </div>
 
       {/* ── Recent activity ── */}
-      <div className="grid gap-4 lg:grid-cols-2 outline-none">
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* Recent conversations */}
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
             <h2 className="text-sm font-semibold">Recent Conversations</h2>
             <Link
               href="/admin/assistant/conversations"
-              className="text-xs text-primary hover:underline"
+              className="text-xs font-medium text-primary hover:underline"
             >
               View all →
             </Link>
           </div>
           {s.recentConvs.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            <p className="px-5 py-10 text-center text-sm text-muted-foreground">
               No conversations yet.
             </p>
           ) : (
-            <ul className="divide-y divide-border">
+            <ul>
               {s.recentConvs.map((c) => (
-                <li key={c.id as string}>
+                <li
+                  key={c.id as string}
+                  className="border-b border-border last:border-0"
+                >
                   <Link
                     href={`/admin/assistant/conversations?id=${c.id}`}
-                    className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-muted/40"
+                    className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-muted/40"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
@@ -279,7 +301,7 @@ export default async function AdminOverviewPage() {
                         ${
                           (c.channel as string) === "telegram"
                             ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
-                            : "bg-primary/10 text-primary"
+                            : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
                         }`}
                       >
                         {(c.channel as string) === "telegram" ? "TG" : "W"}
@@ -300,42 +322,41 @@ export default async function AdminOverviewPage() {
 
         {/* Recent tickets */}
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
             <h2 className="text-sm font-semibold">Recent Tickets</h2>
             <Link
               href="/admin/assistant/tickets"
-              className="text-xs text-primary hover:underline"
+              className="text-xs font-medium text-primary hover:underline"
             >
               View all →
             </Link>
           </div>
           {s.recentTickets.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            <p className="px-5 py-10 text-center text-sm text-muted-foreground">
               No tickets yet.
             </p>
           ) : (
-            <ul className="divide-y divide-border">
+            <ul>
               {s.recentTickets.map((t) => (
-                <li key={t.id as string}>
+                <li
+                  key={t.id as string}
+                  className="border-b border-border last:border-0"
+                >
                   <Link
                     href={`/admin/assistant/tickets/${t.id}`}
-                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40"
+                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/40"
                   >
-                    {/* Priority dot */}
                     <span
                       className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[t.priority as string] ?? "bg-muted"}`}
                     />
-                    {/* Status pill */}
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0 ${STATUS_PILL[t.status as string] ?? ""}`}
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold shrink-0 ${STATUS_PILL[t.status as string] ?? ""}`}
                     >
                       {(t.status as string).replace("_", " ")}
                     </span>
-                    {/* Ticket ID */}
-                    <span className="font-mono text-xs font-semibold truncate">
+                    <span className="font-mono text-xs font-semibold text-foreground truncate">
                       {t.ticket_id as string}
                     </span>
-                    {/* Date */}
                     <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                       {formatDate(t.created_at as string)}
                     </span>
